@@ -29,7 +29,7 @@ export default async function DashboardPage() {
   }
 
   // Obtener referidos recientes
-  const { data: referrals } = await supabase
+  const { data: referralsRaw } = await supabase
     .from('affiliate_referrals')
     .select(`
       id,
@@ -42,8 +42,14 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false })
     .limit(5)
 
+  // Transformar referrals - Supabase devuelve relaciones como arrays
+  const referrals = (referralsRaw || []).map(r => ({
+    ...r,
+    referred_user: (r.referred_user as { username: string; avatar_url: string }[] | null)?.[0]
+  }))
+
   // Obtener comisiones recientes
-  const { data: commissions } = await supabase
+  const { data: commissionsRaw } = await supabase
     .from('affiliate_commissions')
     .select(`
       id,
@@ -57,6 +63,14 @@ export default async function DashboardPage() {
     .eq('affiliate_id', affiliate.id)
     .order('created_at', { ascending: false })
     .limit(5)
+
+  // Transformar commissions - Supabase devuelve relaciones anidadas como arrays
+  const commissions = (commissionsRaw || []).map(c => ({
+    ...c,
+    referral: {
+      referred_user: (c.referral as { referred_user: { username: string }[] }[] | null)?.[0]?.referred_user?.[0]
+    }
+  }))
 
   // Contar referidos activos (con suscripción activa)
   const { count: activeReferralsCount } = await supabase
@@ -91,15 +105,15 @@ export default async function DashboardPage() {
         <div className="space-y-6">
           <ReferralLinkCard
             referralCode={affiliate.referral_code}
-            appSlug={affiliate.app?.slug || 'starbooks'}
+            appSlug={(affiliate.app as { slug: string; name: string }[] | null)?.[0]?.slug || 'starbooks'}
             linkClicks={affiliate.link_clicks || 0}
           />
-          <RecentReferrals referrals={referrals || []} />
+          <RecentReferrals referrals={referrals} />
         </div>
 
         {/* Right column */}
         <div className="space-y-6">
-          <RecentCommissions commissions={commissions || []} />
+          <RecentCommissions commissions={commissions} />
 
           {/* Quick Tips Card */}
           <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 rounded-xl p-6 border border-indigo-500/30">
