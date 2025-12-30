@@ -41,6 +41,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Transformar affiliate - Supabase devuelve relaciones como arrays
+    const affiliate = (payout.affiliate as { id: string; paypal_email: string; user_id: string; pending_balance_cents: number }[] | null)?.[0]
+
     // Verificar estado
     if (payout.status !== 'pending') {
       return NextResponse.json(
@@ -50,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verificar email de PayPal
-    if (!payout.affiliate?.paypal_email) {
+    if (!affiliate?.paypal_email) {
       return NextResponse.json(
         { error: 'Affiliate has no PayPal email configured' },
         { status: 400 }
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
       // Crear payout en PayPal
       const paypalResponse = await createPayout({
         payoutId: payout.id,
-        recipientEmail: payout.affiliate.paypal_email,
+        recipientEmail: affiliate.paypal_email,
         amountCents: payout.amount_cents,
         note: 'Pago de comisiones StarEduca',
       })
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
         .from('affiliate_payouts')
         .update({
           payment_details: {
-            email: payout.affiliate.paypal_email,
+            email: affiliate.paypal_email,
             paypal_batch_id: paypalResponse.batch_header.payout_batch_id,
           },
         })
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
         .update({
           status: 'failed',
           payment_details: {
-            email: payout.affiliate.paypal_email,
+            email: affiliate.paypal_email,
             error: paypalError instanceof Error ? paypalError.message : 'PayPal error',
           },
         })
