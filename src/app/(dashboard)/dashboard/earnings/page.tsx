@@ -154,22 +154,30 @@ export default async function EarningsPage() {
                     <tr key={commission.id} className="border-b border-slate-700/50">
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center">
-                            {commission.referral?.referred_user?.avatar_url ? (
-                              <img
-                                src={commission.referral.referred_user.avatar_url}
-                                alt="Avatar"
-                                className="h-8 w-8 rounded-full object-cover"
-                              />
-                            ) : (
-                              <span className="text-slate-400 text-xs font-medium">
-                                {commission.referral?.referred_user?.username?.charAt(0).toUpperCase() || '?'}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-sm text-white">
-                            @{commission.referral?.referred_user?.username || 'Usuario'}
-                          </span>
+                          {(() => {
+                            const referral = (commission.referral as { referred_user: { username: string; avatar_url: string | null }[] }[] | null)?.[0]
+                            const referredUser = referral?.referred_user?.[0]
+                            return (
+                              <>
+                                <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center">
+                                  {referredUser?.avatar_url ? (
+                                    <img
+                                      src={referredUser.avatar_url}
+                                      alt="Avatar"
+                                      className="h-8 w-8 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="text-slate-400 text-xs font-medium">
+                                      {referredUser?.username?.charAt(0).toUpperCase() || '?'}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-sm text-white">
+                                  @{referredUser?.username || 'Usuario'}
+                                </span>
+                              </>
+                            )
+                          })()}
                         </div>
                       </td>
                       <td className="py-4 px-4 text-sm text-slate-400">
