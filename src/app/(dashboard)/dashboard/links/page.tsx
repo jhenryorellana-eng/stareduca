@@ -37,7 +37,14 @@ export default function LinksPage() {
           .eq('user_id', user.id)
           .single()
 
-        setAffiliate(data)
+        if (data) {
+          const appData = (data.app as { slug: string; name: string }[] | null)?.[0]
+          setAffiliate({
+            referral_code: data.referral_code,
+            link_clicks: data.link_clicks,
+            app: appData
+          })
+        }
       }
       setLoading(false)
     }
