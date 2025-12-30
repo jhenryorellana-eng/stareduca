@@ -25,7 +25,7 @@ export default async function ReferralsPage() {
   }
 
   // Obtener todos los referidos
-  const { data: referrals } = await supabase
+  const { data: referralsRaw } = await supabase
     .from('affiliate_referrals')
     .select(`
       id,
@@ -40,6 +40,12 @@ export default async function ReferralsPage() {
     `)
     .eq('affiliate_id', affiliate.id)
     .order('created_at', { ascending: false })
+
+  // Transformar referrals - Supabase devuelve relaciones como arrays
+  const referrals = (referralsRaw || []).map(r => ({
+    ...r,
+    referred_user: (r.referred_user as { username: string; avatar_url: string | null; subscription_status: string | null }[] | null)?.[0] || null
+  }))
 
   const getStatusStyle = (status: string) => {
     const config = REFERRAL_STATUS[status as keyof typeof REFERRAL_STATUS]
