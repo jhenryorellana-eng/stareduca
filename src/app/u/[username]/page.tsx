@@ -100,7 +100,7 @@ export default async function PublicProfilePage({ params }: Props) {
     .eq('affiliate_id', affiliate.id)
     .eq('status', 'converted')
 
-  const referralLink = `${APP_URL}/${affiliate.app?.slug || 'starbooks'}/ref/${affiliate.referral_code}`
+  const referralLink = `${APP_URL}/${(affiliate.app as { name: string; slug: string }[] | null)?.[0]?.slug || 'starbooks'}/ref/${affiliate.referral_code}`
   const memberSince = new Date(affiliate.created_at).toLocaleDateString('es-ES', {
     month: 'long',
     year: 'numeric'
@@ -158,7 +158,7 @@ export default async function PublicProfilePage({ params }: Props) {
                 @{profile.username}
               </h1>
               <p className="text-slate-400">
-                Afiliado de {affiliate.app?.name || 'Starbooks'}
+                Afiliado de {(affiliate.app as { name: string; slug: string }[] | null)?.[0]?.name || 'Starbooks'}
               </p>
             </div>
 
