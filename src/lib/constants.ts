@@ -11,8 +11,8 @@ export const EMAIL_DOMAIN = 'starbizacademy.com'
 // Configuración de precios
 export const PRICES = {
   USD: {
-    monthly: 999, // $9.99 en centavos
-    yearly: 8999, // $89.99 en centavos
+    monthly: 1499, // $14.99 en centavos
+    yearly: 9900, // $99.00 en centavos
   },
   PEN: {
     monthly: 3500, // S/35.00 en céntimos

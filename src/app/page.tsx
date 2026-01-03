@@ -167,7 +167,7 @@ export default function Home() {
                 <p className="text-slate-400 mb-6">Acceso completo a toda la plataforma</p>
 
                 <div className="mb-6">
-                  <span className="text-5xl font-bold text-white">$9.99</span>
+                  <span className="text-5xl font-bold text-white">$14.99</span>
                   <span className="text-slate-400">/mes</span>
                 </div>
 

@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
         await sendPaymentConfirmationEmail({
           to: pendingRegistration.email,
           fullName: pendingRegistration.full_name,
-          amount: pendingRegistration.plan === 'monthly' ? 9.99 : 89.99,
+          amount: pendingRegistration.plan === 'monthly' ? 14.99 : 99.00,
           currency: 'USD',
           plan: pendingRegistration.plan,
           paymentMethod: 'Tarjeta de Credito',
