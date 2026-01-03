@@ -3,10 +3,10 @@ import { sendWelcomeEmail } from '@/lib/resend'
 
 export async function POST(request: NextRequest) {
   try {
-    const { to, username, studentCode, referralCode, appName } = await request.json()
+    const { to, fullName, studentCode, generatedEmail } = await request.json()
 
     // Validar campos requeridos
-    if (!to || !username || !studentCode || !referralCode) {
+    if (!to || !fullName || !studentCode || !generatedEmail) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
@@ -16,10 +16,9 @@ export async function POST(request: NextRequest) {
     // Enviar email
     const result = await sendWelcomeEmail({
       to,
-      username,
+      fullName,
       studentCode,
-      referralCode,
-      appName,
+      generatedEmail,
     })
 
     return NextResponse.json(result)
