@@ -241,7 +241,6 @@ function RegisterContent() {
                       placeholder="Nombres del estudiante"
                       value={childFirstName}
                       onChange={(e) => setChildFirstName(e.target.value)}
-                      required
                       className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                     />
                   </div>
@@ -254,7 +253,6 @@ function RegisterContent() {
                       placeholder="Apellidos del estudiante"
                       value={childLastName}
                       onChange={(e) => setChildLastName(e.target.value)}
-                      required
                       className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                     />
                   </div>
@@ -270,7 +268,6 @@ function RegisterContent() {
                     placeholder="Edad del estudiante"
                     value={childAge}
                     onChange={(e) => setChildAge(e.target.value)}
-                    required
                     className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                   />
                 </div>
@@ -284,7 +281,6 @@ function RegisterContent() {
                       placeholder="Ciudad donde vive"
                       value={childCity}
                       onChange={(e) => setChildCity(e.target.value)}
-                      required
                       className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                     />
                   </div>
@@ -297,7 +293,6 @@ function RegisterContent() {
                       placeholder="País donde vive"
                       value={childCountry}
                       onChange={(e) => setChildCountry(e.target.value)}
-                      required
                       className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                     />
                   </div>
@@ -322,7 +317,6 @@ function RegisterContent() {
                       placeholder="Nombres del padre/tutor"
                       value={parentFirstName}
                       onChange={(e) => setParentFirstName(e.target.value)}
-                      required
                       className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                     />
                   </div>
@@ -335,7 +329,6 @@ function RegisterContent() {
                       placeholder="Apellidos del padre/tutor"
                       value={parentLastName}
                       onChange={(e) => setParentLastName(e.target.value)}
-                      required
                       className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                     />
                   </div>
@@ -349,7 +342,6 @@ function RegisterContent() {
                     placeholder="correo@ejemplo.com"
                     value={parentEmail}
                     onChange={(e) => setParentEmail(e.target.value)}
-                    required
                     className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                   />
                   <p className="text-xs text-slate-500">
@@ -365,7 +357,6 @@ function RegisterContent() {
                     placeholder="+51 999 999 999"
                     value={parentWhatsapp}
                     onChange={(e) => setParentWhatsapp(e.target.value)}
-                    required
                     className="bg-slate-900 border-slate-600 text-white placeholder:text-slate-500"
                   />
                   <p className="text-xs text-slate-500">
