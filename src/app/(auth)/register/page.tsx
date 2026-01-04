@@ -114,8 +114,7 @@ function RegisterContent() {
     if (step === 3) setStep(2)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async () => {
     setError(null)
     setLoading(true)
 
@@ -210,7 +209,7 @@ function RegisterContent() {
           <StepIndicator />
         </CardHeader>
 
-        <form onSubmit={handleSubmit}>
+        <div>
           <CardContent className="space-y-6">
             {canceled && (
               <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm">
@@ -498,7 +497,8 @@ function RegisterContent() {
                 </Button>
               ) : (
                 <Button
-                  type="submit"
+                  type="button"
+                  onClick={handleSubmit}
                   className="flex-1 bg-indigo-600 hover:bg-indigo-700"
                   disabled={loading}
                 >
@@ -535,7 +535,7 @@ function RegisterContent() {
               </Link>
             </p>
           </CardFooter>
-        </form>
+        </div>
       </Card>
     </div>
   )
