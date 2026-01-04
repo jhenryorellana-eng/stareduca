@@ -78,18 +78,16 @@ export async function POST(request: NextRequest) {
         .from('pending_registrations')
         .select('*')
         .eq('id', pendingRegistrationId)
-        .eq('status', 'pending')
+        .eq('status', 'paid')
         .single()
 
       if (error || !data) {
         return NextResponse.json(
-          { success: false, error: 'Registro no encontrado o ya completado' },
+          { success: false, error: 'Registro no encontrado, pago no verificado o ya completado' },
           { status: 404 }
         )
       }
 
-      // Verificar que el pago Culqi fue procesado (el webhook debe haber actualizado esto)
-      // En este caso, asumimos que el pago fue verificado previamente
       pendingRegistration = data
     }
 
@@ -141,6 +139,17 @@ export async function POST(request: NextRequest) {
         subscription_start_date: new Date().toISOString(),
         subscription_end_date: subscriptionEndDate.toISOString(),
         referred_by_student_id: null, // Se actualizará si hay referral
+        // Datos del hijo/estudiante
+        child_first_name: pendingRegistration.child_first_name,
+        child_last_name: pendingRegistration.child_last_name,
+        child_age: pendingRegistration.child_age,
+        child_city: pendingRegistration.child_city,
+        child_country: pendingRegistration.child_country,
+        // Datos del padre/tutor
+        parent_first_name: pendingRegistration.parent_first_name,
+        parent_last_name: pendingRegistration.parent_last_name,
+        parent_email: pendingRegistration.parent_email,
+        parent_whatsapp: pendingRegistration.parent_whatsapp,
       })
       .select('id, student_code, generated_email, full_name, email')
       .single()

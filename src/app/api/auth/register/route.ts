@@ -12,12 +12,54 @@ import { APP_URL } from '@/lib/constants'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { fullName, email, plan, paymentProvider, referralCode } = body
+    const {
+      // Datos del hijo/estudiante
+      childFirstName,
+      childLastName,
+      childAge,
+      childCity,
+      childCountry,
+      // Datos del padre/tutor
+      parentFirstName,
+      parentLastName,
+      parentEmail,
+      parentWhatsapp,
+      // Datos de suscripción
+      fullName,
+      email,
+      plan,
+      paymentProvider,
+      referralCode,
+    } = body
 
-    // Validaciones básicas
+    // Validaciones básicas (campos originales)
     if (!fullName || !email || !plan || !paymentProvider) {
       return NextResponse.json(
         { success: false, error: 'Faltan campos requeridos' },
+        { status: 400 }
+      )
+    }
+
+    // Validaciones de datos del hijo
+    if (!childFirstName || !childLastName || !childAge || !childCity || !childCountry) {
+      return NextResponse.json(
+        { success: false, error: 'Faltan datos del estudiante' },
+        { status: 400 }
+      )
+    }
+
+    // Validaciones de datos del padre
+    if (!parentFirstName || !parentLastName || !parentEmail || !parentWhatsapp) {
+      return NextResponse.json(
+        { success: false, error: 'Faltan datos del padre o tutor' },
+        { status: 400 }
+      )
+    }
+
+    // Validar edad del hijo
+    if (typeof childAge !== 'number' || childAge < 5 || childAge > 99) {
+      return NextResponse.json(
+        { success: false, error: 'La edad del estudiante debe estar entre 5 y 99 años' },
         { status: 400 }
       )
     }
@@ -75,6 +117,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Datos comunes para el registro pendiente
+    const pendingRegistrationData = {
+      email: email.toLowerCase(),
+      full_name: fullName,
+      plan,
+      referral_code: validReferralCode,
+      status: 'pending',
+      // Nuevos campos del hijo
+      child_first_name: childFirstName,
+      child_last_name: childLastName,
+      child_age: childAge,
+      child_city: childCity,
+      child_country: childCountry,
+      // Nuevos campos del padre
+      parent_first_name: parentFirstName,
+      parent_last_name: parentLastName,
+      parent_email: parentEmail.toLowerCase(),
+      parent_whatsapp: parentWhatsapp,
+    }
+
     // Para Stripe: crear checkout session
     if (paymentProvider === 'stripe') {
       const successUrl = `${APP_URL}/register/complete`
@@ -93,13 +155,9 @@ export async function POST(request: NextRequest) {
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 horas
 
       await supabase.from('pending_registrations').insert({
-        email: email.toLowerCase(),
-        full_name: fullName,
-        plan,
+        ...pendingRegistrationData,
         payment_provider: 'stripe',
         checkout_session_id: sessionId,
-        referral_code: validReferralCode,
-        status: 'pending',
         expires_at: expiresAt.toISOString(),
       })
 
@@ -118,13 +176,9 @@ export async function POST(request: NextRequest) {
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000) // 30 minutos
 
       await supabase.from('pending_registrations').insert({
+        ...pendingRegistrationData,
         id: tempId,
-        email: email.toLowerCase(),
-        full_name: fullName,
-        plan,
         payment_provider: 'culqi',
-        referral_code: validReferralCode,
-        status: 'pending',
         expires_at: expiresAt.toISOString(),
       })
 

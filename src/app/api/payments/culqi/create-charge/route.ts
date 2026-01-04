@@ -70,11 +70,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Actualizar registro pendiente con el ID del cargo
+    // Actualizar registro pendiente con el ID del cargo y marcar como pagado
     await supabase
       .from('pending_registrations')
       .update({
         checkout_session_id: chargeResult.charge.id,
+        status: 'paid',
       })
       .eq('id', pendingRegistrationId)
 
