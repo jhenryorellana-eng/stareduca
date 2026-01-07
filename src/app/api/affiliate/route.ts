@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { verifyActiveSubscription } from '@/lib/auth/subscriptionCheck'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,31 +10,17 @@ const supabase = createClient(
 // GET /api/affiliate - Obtener datos del afiliado
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
+    // Verificar autenticacion y suscripcion activa
+    const student = await verifyActiveSubscription()
 
-    if (!authToken) {
+    if (!student) {
       return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
+        { success: false, error: 'Requiere suscripcion activa', requiresSubscription: true },
+        { status: 403 }
       )
     }
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
-      )
-    }
-
-    const studentId = user.user_metadata?.student_id
-    if (!studentId) {
-      return NextResponse.json(
-        { success: false, error: 'Estudiante no encontrado' },
-        { status: 400 }
-      )
-    }
+    const studentId = student.id
 
     // Obtener datos del afiliado
     const { data: affiliate, error } = await supabase
@@ -138,31 +124,17 @@ export async function GET(request: NextRequest) {
 // POST /api/affiliate - Activar programa de afiliados
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
+    // Verificar autenticacion y suscripcion activa
+    const student = await verifyActiveSubscription()
 
-    if (!authToken) {
+    if (!student) {
       return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
+        { success: false, error: 'Requiere suscripcion activa', requiresSubscription: true },
+        { status: 403 }
       )
     }
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
-      )
-    }
-
-    const studentId = user.user_metadata?.student_id
-    if (!studentId) {
-      return NextResponse.json(
-        { success: false, error: 'Estudiante no encontrado' },
-        { status: 400 }
-      )
-    }
+    const studentId = student.id
 
     // Verificar si ya es afiliado
     const { data: existingAffiliate } = await supabase
@@ -174,20 +146,6 @@ export async function POST(request: NextRequest) {
     if (existingAffiliate) {
       return NextResponse.json(
         { success: false, error: 'Ya eres afiliado' },
-        { status: 400 }
-      )
-    }
-
-    // Obtener codigo del estudiante para usar como referral
-    const { data: student } = await supabase
-      .from('students')
-      .select('student_code')
-      .eq('id', studentId)
-      .single()
-
-    if (!student) {
-      return NextResponse.json(
-        { success: false, error: 'Estudiante no encontrado' },
         { status: 400 }
       )
     }
@@ -237,25 +195,17 @@ export async function POST(request: NextRequest) {
 // PATCH /api/affiliate - Actualizar datos del afiliado
 export async function PATCH(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
+    // Verificar autenticacion y suscripcion activa
+    const student = await verifyActiveSubscription()
 
-    if (!authToken) {
+    if (!student) {
       return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
+        { success: false, error: 'Requiere suscripcion activa', requiresSubscription: true },
+        { status: 403 }
       )
     }
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
-      )
-    }
-
-    const studentId = user.user_metadata?.student_id
+    const studentId = student.id
 
     const { data: affiliate } = await supabase
       .from('affiliates')

@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { ReactionsModal } from './ReactionsModal'
 
 interface Author {
   id: string
@@ -92,6 +93,7 @@ export function CommentItem({
   isReply = false
 }: CommentItemProps) {
   const [showReplies, setShowReplies] = useState(true)
+  const [showReactionsModal, setShowReactionsModal] = useState(false)
   const isAuthor = currentStudentId === comment.author.id
 
   return (
@@ -149,8 +151,22 @@ export function CommentItem({
                   : "text-slate-500 hover:text-indigo-400"
               )}
             >
-              Me gusta{comment.reactions_count > 0 && ` · ${comment.reactions_count}`}
+              Me gusta
             </button>
+
+            {comment.reactions_count > 0 && (
+              <button
+                onClick={() => setShowReactionsModal(true)}
+                className={cn(
+                  "text-xs font-medium transition-colors hover:underline",
+                  comment.userReaction
+                    ? "text-indigo-400"
+                    : "text-slate-500 hover:text-indigo-400"
+                )}
+              >
+                {comment.reactions_count}
+              </button>
+            )}
 
             {!isReply && (
               <button
@@ -211,6 +227,14 @@ export function CommentItem({
           )}
         </div>
       </div>
+
+      {/* Reactions Modal */}
+      <ReactionsModal
+        isOpen={showReactionsModal}
+        onClose={() => setShowReactionsModal(false)}
+        targetType="comment"
+        targetId={comment.id}
+      />
     </div>
   )
 }

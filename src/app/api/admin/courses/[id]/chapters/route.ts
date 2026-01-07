@@ -1,20 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -31,20 +35,13 @@ export async function GET(
 ) {
   try {
     const { id: courseId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
     // Verificar que el curso existe
-    const { data: course } = await supabase
+    const { data: course } = await serviceClient
       .from('courses')
       .select('id, title')
       .eq('id', courseId)
@@ -58,7 +55,7 @@ export async function GET(
     }
 
     // Obtener capitulos
-    const { data: chapters, error } = await supabase
+    const { data: chapters, error } = await serviceClient
       .from('chapters')
       .select(`
         id,
@@ -88,7 +85,7 @@ export async function GET(
     let materialCounts: Record<string, number> = {}
 
     if (chapterIds.length > 0) {
-      const { data: materials } = await supabase
+      const { data: materials } = await serviceClient
         .from('chapter_materials')
         .select('chapter_id')
         .in('chapter_id', chapterIds)
@@ -128,20 +125,13 @@ export async function POST(
 ) {
   try {
     const { id: courseId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
     // Verificar que el curso existe
-    const { data: course } = await supabase
+    const { data: course } = await serviceClient
       .from('courses')
       .select('id')
       .eq('id', courseId)
@@ -159,8 +149,7 @@ export async function POST(
       title,
       description,
       video_url,
-      video_duration_seconds,
-      is_free_preview
+      video_duration_seconds
     } = body
 
     if (!title || title.trim().length < 3) {
@@ -171,7 +160,7 @@ export async function POST(
     }
 
     // Obtener el maximo order_index y chapter_number
-    const { data: maxChapter } = await supabase
+    const { data: maxChapter } = await serviceClient
       .from('chapters')
       .select('order_index, chapter_number')
       .eq('course_id', courseId)
@@ -182,7 +171,7 @@ export async function POST(
     const orderIndex = (maxChapter?.order_index || 0) + 1
     const chapterNumber = (maxChapter?.chapter_number || 0) + 1
 
-    const { data: chapter, error } = await supabase
+    const { data: chapter, error } = await serviceClient
       .from('chapters')
       .insert({
         course_id: courseId,
@@ -191,7 +180,7 @@ export async function POST(
         description: description?.trim() || null,
         video_url: video_url || null,
         video_duration_seconds: video_duration_seconds || 0,
-        is_free_preview: is_free_preview || false,
+        is_free_preview: false,
         order_index: orderIndex
       })
       .select()
@@ -206,12 +195,12 @@ export async function POST(
     }
 
     // Actualizar total_chapters en el curso
-    const { data: totalCount } = await supabase
+    const { data: totalCount } = await serviceClient
       .from('chapters')
       .select('id', { count: 'exact', head: true })
       .eq('course_id', courseId)
 
-    await supabase
+    await serviceClient
       .from('courses')
       .update({
         total_chapters: totalCount || 1,

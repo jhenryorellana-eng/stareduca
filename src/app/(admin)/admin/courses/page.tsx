@@ -203,13 +203,13 @@ export default function AdminCoursesPage() {
                 {/* Quick actions overlay */}
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                   <Link href={`/admin/courses/${course.id}`}>
-                    <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700">
+                    <Button size="sm" className="bg-indigo-600/70 hover:bg-indigo-700">
                       <Edit className="h-4 w-4 mr-1" />
                       Editar
                     </Button>
                   </Link>
                   <Link href={`/admin/courses/${course.id}/chapters`}>
-                    <Button size="sm" variant="outline" className="border-white/50 text-white hover:bg-white/10">
+                    <Button size="sm" variant="outline" className="bg-purple-600/70 border-none text-white  hover:bg-purple-600">
                       Capitulos
                     </Button>
                   </Link>

@@ -10,7 +10,9 @@ import {
   CheckCircle,
   Loader2,
   BookOpen,
-  List
+  List,
+  Lock,
+  ClipboardCheck
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { VideoPlayer } from '@/components/courses/VideoPlayer'
@@ -83,6 +85,18 @@ export default function ChapterPlayerPage() {
         }
 
         setCourse(data.course)
+
+        // Verificar si el capitulo esta bloqueado (anterior no completado)
+        const chapters = data.course.chapters || []
+        const idx = chapters.findIndex((c: Chapter) => c.id === chapterId)
+        if (idx > 0) {
+          const prevChapter = chapters[idx - 1]
+          if (!prevChapter.progress.completed) {
+            // Redirigir al capitulo anterior que debe completar
+            router.replace(`/courses/${slug}/${prevChapter.id}`)
+            return
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Error desconocido')
       } finally {
@@ -93,7 +107,7 @@ export default function ChapterPlayerPage() {
     if (slug) {
       fetchCourse()
     }
-  }, [slug])
+  }, [slug, chapterId, router])
 
   const updateProgress = useCallback(async (progressPercent: number, lastPosition: number) => {
     if (!course) return
@@ -201,7 +215,7 @@ export default function ChapterPlayerPage() {
         <Button
           variant="outline"
           onClick={() => setShowChapterList(!showChapterList)}
-          className="flex-shrink-0 border-slate-700 text-slate-300 hover:text-white"
+          className="flex-shrink-0 border-purple-600 bg-purple-600/40 text-purple-400 hover:bg-purple-600 hover:text-white"
         >
           <List className="h-4 w-4 mr-2" />
           Capitulos
@@ -266,7 +280,7 @@ export default function ChapterPlayerPage() {
           <div className="flex items-center justify-between gap-4">
             {prevChapter ? (
               <Link href={`/courses/${slug}/${prevChapter.id}`}>
-                <Button variant="outline" className="border-slate-700 text-slate-300 hover:text-white">
+                <Button variant="outline" className="border-slate-700 bg-trasparent text-slate-300 hover:bg-indigo-700/40 hover:text-white">
                   <ChevronLeft className="h-4 w-4 mr-2" />
                   Anterior
                 </Button>
@@ -276,19 +290,35 @@ export default function ChapterPlayerPage() {
             )}
 
             {nextChapter ? (
-              <Link href={`/courses/${slug}/${nextChapter.id}`}>
-                <Button className="bg-indigo-600 hover:bg-indigo-700">
-                  Siguiente
-                  <ChevronRight className="h-4 w-4 ml-2" />
+              // Bloquear siguiente si el capitulo actual no esta completado
+              currentChapter?.progress.completed ? (
+                <Link href={`/courses/${slug}/${nextChapter.id}`}>
+                  <Button className="bg-indigo-600 hover:bg-indigo-700">
+                    Siguiente
+                    <ChevronRight className="h-4 w-4 ml-2" />
+                  </Button>
+                </Link>
+              ) : (
+                <Button disabled className="bg-slate-700 text-slate-400 cursor-not-allowed">
+                  <Lock className="h-4 w-4 mr-2" />
+                  Completa este capitulo
                 </Button>
-              </Link>
+              )
             ) : (
-              <Link href={`/courses/${slug}`}>
-                <Button className="bg-green-600 hover:bg-green-700">
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Finalizar curso
+              // Ultimo capitulo - ir al examen si esta completado
+              currentChapter?.progress.completed ? (
+                <Link href={`/courses/${slug}/exam`}>
+                  <Button className="bg-emerald-600 hover:bg-emerald-700">
+                    <ClipboardCheck className="h-4 w-4 mr-2" />
+                    Ir al examen
+                  </Button>
+                </Link>
+              ) : (
+                <Button disabled className="bg-slate-700 text-slate-400 cursor-not-allowed">
+                  <Lock className="h-4 w-4 mr-2" />
+                  Completa para finalizar
                 </Button>
-              </Link>
+              )
             )}
           </div>
         </div>

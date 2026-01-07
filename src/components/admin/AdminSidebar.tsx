@@ -76,7 +76,7 @@ export function AdminSidebar({ student }: AdminSidebarProps) {
       {/* Back to student view */}
       <div className="px-4 py-3">
         <Link href="/dashboard">
-          <Button variant="outline" size="sm" className="w-full justify-start border-slate-700 text-slate-400 hover:text-white">
+          <Button variant="outline" size="sm" className="w-full justify-start bg-transparent border-slate-700 text-slate-400 hover:text-white hover:bg-transparent py-5">
             <ChevronLeft className="h-4 w-4 mr-2" />
             Volver a estudiante
           </Button>

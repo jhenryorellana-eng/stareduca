@@ -10,7 +10,7 @@ type CourseWithProgress = {
   id: string
   slug: string
   title: string
-  description: string
+  short_description: string | null
   thumbnail_url: string | null
   instructor_name: string
   instructor_avatar_url: string | null
@@ -125,16 +125,16 @@ export default function CoursesPage() {
       {/* Filters */}
       <Tabs value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
         <TabsList className="bg-slate-800 border border-slate-700">
-          <TabsTrigger value="all" className="data-[state=active]:bg-indigo-600">
+          <TabsTrigger value="all" className="data-[state=active]:bg-indigo-600 text-gray-200">
             Todos
           </TabsTrigger>
-          <TabsTrigger value="in_progress" className="data-[state=active]:bg-indigo-600">
+          <TabsTrigger value="in_progress" className="data-[state=active]:bg-indigo-600 text-gray-200">
             En progreso
           </TabsTrigger>
-          <TabsTrigger value="completed" className="data-[state=active]:bg-indigo-600">
+          <TabsTrigger value="completed" className="data-[state=active]:bg-indigo-600 text-gray-200">
             Completados
           </TabsTrigger>
-          <TabsTrigger value="not_started" className="data-[state=active]:bg-indigo-600">
+          <TabsTrigger value="not_started" className="data-[state=active]:bg-indigo-600 text-gray-200">
             Sin empezar
           </TabsTrigger>
         </TabsList>

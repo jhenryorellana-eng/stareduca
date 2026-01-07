@@ -11,12 +11,15 @@ import {
   CheckCircle,
   Loader2,
   User,
-  BarChart3
+  BarChart3,
+  ClipboardCheck,
+  Trophy
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { ChapterList } from '@/components/courses/ChapterList'
+import { VideoPlayer } from '@/components/courses/VideoPlayer'
 import { formatDuration } from '@/lib/constants'
 
 interface Chapter {
@@ -46,14 +49,16 @@ interface Course {
   slug: string
   title: string
   description: string
-  long_description: string
+  short_description: string | null
   thumbnail_url: string | null
+  presentation_video_url: string | null
   instructor_name: string
   instructor_avatar_url: string | null
   instructor_bio: string
   total_chapters: number
   total_duration_seconds: number
-  difficulty_level: string
+  category?: string | null
+  tags?: string[] | null
   chapters: Chapter[]
   progress: {
     completedChapters: number
@@ -61,18 +66,6 @@ interface Course {
     percent: number
     currentChapterId: string | null
   }
-}
-
-const difficultyColors = {
-  beginner: 'bg-green-500/20 text-green-400 border-green-500/30',
-  intermediate: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  advanced: 'bg-red-500/20 text-red-400 border-red-500/30',
-}
-
-const difficultyLabels = {
-  beginner: 'Principiante',
-  intermediate: 'Intermedio',
-  advanced: 'Avanzado',
 }
 
 export default function CourseDetailPage() {
@@ -147,42 +140,62 @@ export default function CourseDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Course info */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Thumbnail */}
-          <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-800">
-            {course.thumbnail_url ? (
-              <img
-                src={course.thumbnail_url}
-                alt={course.title}
-                className="w-full h-full object-cover"
+          {/* Video de Presentación o Thumbnail */}
+          {course.presentation_video_url ? (
+            <div className="relative aspect-video rounded-xl overflow-hidden">
+              <VideoPlayer
+                videoUrl={course.presentation_video_url}
+                title={`Presentación: ${course.title}`}
               />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-600/20 to-purple-600/20">
-                <BookOpen className="h-16 w-16 text-slate-500" />
-              </div>
-            )}
-
-            {/* Play button overlay */}
-            {currentChapter && (
-              <Link
-                href={`/courses/${slug}/${currentChapter.id}`}
-                className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity"
-              >
-                <div className="h-16 w-16 rounded-full bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/50">
-                  <Play className="h-8 w-8 text-white ml-1" />
+            </div>
+          ) : (
+            <div className="relative aspect-video rounded-xl overflow-hidden bg-slate-800">
+              {course.thumbnail_url ? (
+                <img
+                  src={course.thumbnail_url}
+                  alt={course.title}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-600/20 to-purple-600/20">
+                  <BookOpen className="h-16 w-16 text-slate-500" />
                 </div>
-              </Link>
-            )}
-          </div>
+              )}
+
+              {/* Play button overlay */}
+              {currentChapter && (
+                <Link
+                  href={`/courses/${slug}/${currentChapter.id}`}
+                  className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity"
+                >
+                  <div className="h-16 w-16 rounded-full bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/50">
+                    <Play className="h-8 w-8 text-white ml-1" />
+                  </div>
+                </Link>
+              )}
+            </div>
+          )}
 
           {/* Title and badges */}
           <div>
             <div className="flex flex-wrap items-center gap-2 mb-3">
-              <Badge
-                variant="outline"
-                className={difficultyColors[course.difficulty_level as keyof typeof difficultyColors] || difficultyColors.beginner}
-              >
-                {difficultyLabels[course.difficulty_level as keyof typeof difficultyLabels] || 'Principiante'}
-              </Badge>
+              {course.category && (
+                <Badge
+                  variant="outline"
+                  className="bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+                >
+                  {course.category}
+                </Badge>
+              )}
+              {course.tags && course.tags.length > 0 && course.tags.map((tag, i) => (
+                <Badge
+                  key={i}
+                  variant="outline"
+                  className="bg-slate-700/50 text-slate-300 border-slate-600"
+                >
+                  {tag}
+                </Badge>
+              ))}
               {isCompleted && (
                 <Badge className="bg-green-500 text-white border-0">
                   <CheckCircle className="h-3 w-3 mr-1" />
@@ -191,7 +204,6 @@ export default function CourseDetailPage() {
               )}
             </div>
             <h1 className="text-3xl font-bold text-white">{course.title}</h1>
-            <p className="mt-3 text-slate-400">{course.description}</p>
           </div>
 
           {/* Stats */}
@@ -210,12 +222,12 @@ export default function CourseDetailPage() {
             </span>
           </div>
 
-          {/* Long description */}
-          {course.long_description && (
+          {/* Full description */}
+          {course.description && (
             <div className="p-6 rounded-xl bg-slate-800/50 border border-slate-700/50">
               <h3 className="text-lg font-semibold text-white mb-3">Acerca del curso</h3>
               <div className="text-slate-400 whitespace-pre-line">
-                {course.long_description}
+                {course.description}
               </div>
             </div>
           )}
@@ -224,7 +236,7 @@ export default function CourseDetailPage() {
           <div className="p-6 rounded-xl bg-slate-800/50 border border-slate-700/50">
             <h3 className="text-lg font-semibold text-white mb-4">Instructor</h3>
             <div className="flex items-start gap-4">
-              <div className="h-14 w-14 rounded-xl bg-slate-700 overflow-hidden">
+              <div className="h-14 w-14 rounded-xl bg-slate-700 overflow-hidden flex items-center justify-center">
                 {course.instructor_avatar_url ? (
                   <img
                     src={course.instructor_avatar_url}
@@ -232,7 +244,7 @@ export default function CourseDetailPage() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center">
+                  <div className="h-12 w-12 flex items-center justify-center">
                     <User className="h-6 w-6 text-slate-500" />
                   </div>
                 )}
@@ -258,14 +270,14 @@ export default function CourseDetailPage() {
                   <span className="text-sm text-slate-400">Completado</span>
                   <span className="text-sm font-medium text-indigo-400">{course.progress.percent}%</span>
                 </div>
-                <Progress value={course.progress.percent} className="h-2" />
+                <Progress value={course.progress.percent} className="h-2 border-1 border-indigo-700" />
               </div>
               <p className="text-sm text-slate-500">
                 {course.progress.completedChapters} de {course.progress.totalChapters} capitulos
               </p>
 
               {/* CTA Button */}
-              {currentChapter && (
+            {currentChapter && (
                 <Link href={`/courses/${slug}/${currentChapter.id}`}>
                   <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
                     <Play className="h-4 w-4 mr-2" />
@@ -275,6 +287,30 @@ export default function CourseDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Exam section - Only show when course is completed */}
+          {isCompleted && (
+            <div className="p-6 rounded-xl bg-gradient-to-br from-emerald-900/30 to-green-900/20 border border-emerald-700/50">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="h-10 w-10 rounded-lg bg-emerald-600/20 flex items-center justify-center">
+                  <Trophy className="h-5 w-5 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Examen Final</h3>
+                  <p className="text-sm text-emerald-400">Curso completado</p>
+                </div>
+              </div>
+              <p className="text-slate-400 text-sm mb-4">
+                Has completado todos los capitulos. Realiza el examen final para evaluar tus conocimientos.
+              </p>
+              <Link href={`/courses/${slug}/exam`}>
+                <Button className="w-full bg-emerald-600 hover:bg-emerald-700">
+                  <ClipboardCheck className="h-4 w-4 mr-2" />
+                  Ir al examen
+                </Button>
+              </Link>
+            </div>
+          )}
 
           {/* Chapters list */}
           <div className="p-6 rounded-xl bg-slate-800/50 border border-slate-700/50">

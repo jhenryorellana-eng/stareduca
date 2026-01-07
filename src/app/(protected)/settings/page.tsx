@@ -12,8 +12,12 @@ import {
   Save,
   Camera,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Eye,
+  EyeOff,
+  KeyRound
 } from 'lucide-react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
@@ -52,6 +56,16 @@ export default function SettingsPage() {
   // Profile form
   const [fullName, setFullName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
+
+  // Password form
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -126,6 +140,55 @@ export default function SettingsPage() {
     } catch (error) {
       // Revertir si falla
       setPreferences({ ...preferences, [key]: !newValue })
+    }
+  }
+
+  const isValidPassword = (pwd: string) => {
+    return pwd.length >= 8 && /^[a-zA-Z0-9]+$/.test(pwd)
+  }
+
+  const handleChangePassword = async () => {
+    setPasswordMessage(null)
+
+    // Validaciones
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordMessage({ type: 'error', text: 'Todos los campos son requeridos' })
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ type: 'error', text: 'Las contrasenas nuevas no coinciden' })
+      return
+    }
+
+    if (!isValidPassword(newPassword)) {
+      setPasswordMessage({ type: 'error', text: 'La contrasena debe tener minimo 8 caracteres y solo letras y numeros' })
+      return
+    }
+
+    setSavingPassword(true)
+
+    try {
+      const response = await fetch('/api/settings/password', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setPasswordMessage({ type: 'success', text: 'Contrasena actualizada correctamente' })
+        setCurrentPassword('')
+        setNewPassword('')
+        setConfirmPassword('')
+      } else {
+        setPasswordMessage({ type: 'error', text: data.error || 'Error al cambiar contrasena' })
+      }
+    } catch (error) {
+      setPasswordMessage({ type: 'error', text: 'Error del servidor' })
+    } finally {
+      setSavingPassword(false)
     }
   }
 
@@ -344,6 +407,119 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* Security - Change Password */}
+      <div className="p-6 rounded-xl bg-slate-800/50 border border-slate-700/50">
+        <div className="flex items-center gap-3 mb-6">
+          <Shield className="h-5 w-5 text-indigo-400" />
+          <h2 className="text-lg font-semibold text-white">Seguridad</h2>
+        </div>
+
+        <div className="space-y-4">
+          {/* Password message */}
+          {passwordMessage && (
+            <div className={cn(
+              "flex items-center gap-2 p-3 rounded-lg text-sm",
+              passwordMessage.type === 'success' ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+            )}>
+              {passwordMessage.type === 'success' ? (
+                <CheckCircle className="h-4 w-4" />
+              ) : (
+                <AlertCircle className="h-4 w-4" />
+              )}
+              <span>{passwordMessage.text}</span>
+            </div>
+          )}
+
+          {/* Current password */}
+          <div>
+            <label className="text-sm text-slate-400 mb-1 block">Contrasena actual</label>
+            <div className="relative">
+              <input
+                type={showCurrentPassword ? 'text' : 'password'}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Tu contrasena actual"
+                className="w-full px-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-indigo-500 pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* New password */}
+          <div>
+            <label className="text-sm text-slate-400 mb-1 block">Nueva contrasena</label>
+            <div className="relative">
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimo 8 caracteres"
+                className="w-full px-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-indigo-500 pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Solo letras y numeros</p>
+          </div>
+
+          {/* Confirm password */}
+          <div>
+            <label className="text-sm text-slate-400 mb-1 block">Confirmar nueva contrasena</label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repite la nueva contrasena"
+                className="w-full px-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-indigo-500 pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+              >
+                {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleChangePassword}
+            disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword}
+            className="w-full bg-indigo-600 hover:bg-indigo-700"
+          >
+            {savingPassword ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <KeyRound className="h-4 w-4 mr-2" />
+            )}
+            Cambiar contrasena
+          </Button>
+
+          {/* Forgot password link */}
+          <div className="pt-2 border-t border-slate-700/50">
+            <Link
+              href="/forgot-password"
+              className="text-sm text-indigo-400 hover:text-indigo-300 flex items-center gap-2"
+            >
+              <Mail className="h-4 w-4" />
+              ¿Olvidaste tu contrasena? Recuperala por email
+            </Link>
+          </div>
+        </div>
+      </div>
+
       {/* Logout */}
       <div className="p-6 rounded-xl bg-slate-800/50 border border-red-500/30">
         <div className="flex items-center justify-between">
@@ -354,7 +530,7 @@ export default function SettingsPage() {
           <Button
             onClick={handleLogout}
             variant="outline"
-            className="border-red-500/50 text-red-400 hover:bg-red-500/10"
+            className="border-red-500/50 text-red-400 hover:bg-red-500/10 bg-transparent hover:bg-red-400"
           >
             <LogOut className="h-4 w-4 mr-2" />
             Cerrar sesion

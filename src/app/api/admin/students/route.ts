@@ -1,20 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -27,16 +31,9 @@ async function verifyAdmin(authToken: string) {
 // GET /api/admin/students - Lista de estudiantes
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -46,19 +43,19 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || ''
     const offset = (page - 1) * limit
 
-    let query = supabase
+    let query = serviceClient
       .from('students')
       .select(`
         id,
         student_code,
         full_name,
         email,
-        phone,
-        country,
+        generated_email,
         role,
         subscription_status,
         subscription_type,
-        subscription_expires_at,
+        subscription_end_date,
+        stripe_customer_id,
         created_at,
         last_login_at
       `, { count: 'exact' })
@@ -112,16 +109,9 @@ export async function GET(request: NextRequest) {
 // PATCH /api/admin/students - Actualizar estudiante
 export async function PATCH(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -135,8 +125,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     const allowedFields = [
-      'full_name', 'email', 'phone', 'country', 'role',
-      'subscription_status', 'subscription_type', 'subscription_expires_at'
+      'full_name', 'email', 'role',
+      'subscription_status', 'subscription_type', 'subscription_end_date'
     ]
 
     const filteredUpdates: Record<string, any> = {}
@@ -155,7 +145,7 @@ export async function PATCH(request: NextRequest) {
 
     filteredUpdates.updated_at = new Date().toISOString()
 
-    const { data: student, error } = await supabase
+    const { data: student, error } = await serviceClient
       .from('students')
       .update(filteredUpdates)
       .eq('id', studentId)

@@ -112,8 +112,12 @@ export async function verifyPaymentSuccess(sessionId: string) {
     success: true,
     session,
     metadata: session.metadata,
-    customerId: session.customer as string,
-    subscriptionId: session.subscription as string,
+    customerId: typeof session.customer === 'string'
+      ? session.customer
+      : session.customer?.id || null,
+    subscriptionId: typeof session.subscription === 'string'
+      ? session.subscription
+      : session.subscription?.id || null,
     amountTotal: session.amount_total,
     currency: session.currency,
   }
@@ -144,6 +148,19 @@ export async function createCustomer(params: {
 export async function getSubscription(subscriptionId: string) {
   const subscription = await stripe.subscriptions.retrieve(subscriptionId)
   return subscription
+}
+
+// ============================================================================
+// OBTENER PRECIO DE STRIPE
+// ============================================================================
+
+export async function getStripePrice(priceId: string) {
+  const price = await stripe.prices.retrieve(priceId)
+  return {
+    amount: price.unit_amount || 0,  // En centavos
+    currency: price.currency.toUpperCase(),
+    interval: price.recurring?.interval || 'month'
+  }
 }
 
 // ============================================================================

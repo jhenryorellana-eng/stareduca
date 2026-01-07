@@ -92,11 +92,16 @@ export default function CommunityPage() {
     fetchPosts(1)
   }, [fetchPosts, fetchCurrentStudent])
 
-  const handleCreatePost = async (data: { content: string; image_url?: string }) => {
+  const handleCreatePost = async (data: { content: string; imageFile?: File }) => {
+    const formData = new FormData()
+    formData.append('content', data.content)
+    if (data.imageFile) {
+      formData.append('image', data.imageFile)
+    }
+
     const response = await fetch('/api/community/posts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: formData
     })
 
     const result = await response.json()
@@ -186,11 +191,11 @@ export default function CommunityPage() {
         <h1 className="text-2xl font-bold text-white">Comunidad</h1>
         <Tabs value={filter} onValueChange={(v) => setFilter(v as 'all' | 'announcements')}>
           <TabsList className="bg-slate-800/50">
-            <TabsTrigger value="all" className="data-[state=active]:bg-indigo-600">
+            <TabsTrigger value="all" className="data-[state=active]:bg-indigo-600 text-white">
               <TrendingUp className="h-4 w-4 mr-2" />
               Todo
             </TabsTrigger>
-            <TabsTrigger value="announcements" className="data-[state=active]:bg-indigo-600">
+            <TabsTrigger value="announcements" className="data-[state=active]:bg-indigo-600 text-white">
               <Bell className="h-4 w-4 mr-2" />
               Anuncios
             </TabsTrigger>

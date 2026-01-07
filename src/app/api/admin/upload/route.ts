@@ -1,20 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -24,24 +28,37 @@ async function verifyAdmin(authToken: string) {
   return student
 }
 
+// Mapear folder a bucket existente
+function getBucket(folder: string): string {
+  switch (folder) {
+    case 'course-thumbnails':
+      return 'course-thumbnails'
+    case 'course-videos':
+      return 'chapter-videos'
+    case 'avatars':
+      return 'avatars'
+    case 'post-images':
+      return 'post-images'
+    case 'course-materials':
+    case 'chapter-materials':
+    case 'materials':
+      return 'course-materials'
+    default:
+      return 'course-thumbnails'
+  }
+}
+
 // POST /api/admin/upload - Subir archivo
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const formData = await request.formData()
     const file = formData.get('file') as File
-    const folder = formData.get('folder') as string || 'materials'
+    const folder = formData.get('folder') as string || 'course-thumbnails'
 
     if (!file) {
       return NextResponse.json(
@@ -59,19 +76,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Determinar bucket segun folder
+    const bucket = getBucket(folder)
+
     // Generar nombre unico
     const timestamp = Date.now()
     const randomSuffix = Math.random().toString(36).substring(2, 8)
     const extension = file.name.split('.').pop()
-    const fileName = `${folder}/${timestamp}-${randomSuffix}.${extension}`
+    const fileName = `${timestamp}-${randomSuffix}.${extension}`
 
     // Convertir a buffer
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
     // Subir a Supabase Storage
-    const { data, error } = await supabase.storage
-      .from('course-materials')
+    const { data, error } = await serviceClient.storage
+      .from(bucket)
       .upload(fileName, buffer, {
         contentType: file.type,
         upsert: false
@@ -86,8 +106,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Obtener URL publica
-    const { data: { publicUrl } } = supabase.storage
-      .from('course-materials')
+    const { data: { publicUrl } } = serviceClient.storage
+      .from(bucket)
       .getPublicUrl(fileName)
 
     return NextResponse.json({
@@ -111,20 +131,14 @@ export async function POST(request: NextRequest) {
 // DELETE /api/admin/upload - Eliminar archivo
 export async function DELETE(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
     const path = searchParams.get('path')
+    const folder = searchParams.get('folder') || 'course-thumbnails'
 
     if (!path) {
       return NextResponse.json(
@@ -133,8 +147,10 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const { error } = await supabase.storage
-      .from('course-materials')
+    const bucket = getBucket(folder)
+
+    const { error } = await serviceClient.storage
+      .from(bucket)
       .remove([path])
 
     if (error) {

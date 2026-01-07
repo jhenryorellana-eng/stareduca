@@ -1,29 +1,22 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
-import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Service client para bypasear RLS
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 // GET /api/auth/me - Obtener estudiante actual
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!authToken) {
-      return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
-
-    const { data: { user } } = await supabase.auth.getUser(authToken)
     if (!user) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
+        { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
@@ -36,7 +29,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { data: student, error } = await supabase
+    const { data: student, error } = await serviceClient
       .from('students')
       .select(`
         id,

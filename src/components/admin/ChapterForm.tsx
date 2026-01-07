@@ -1,10 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Save, Video, Clock } from 'lucide-react'
+import { Loader2, Save, Video, Clock, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
 
 interface ChapterFormProps {
   courseId: string
@@ -14,7 +13,6 @@ interface ChapterFormProps {
     description: string | null
     video_url: string | null
     video_duration_seconds: number
-    is_free_preview: boolean
   }
   onSuccess?: () => void
 }
@@ -29,8 +27,51 @@ export function ChapterForm({ courseId, chapter, onSuccess }: ChapterFormProps) 
   const [title, setTitle] = useState(chapter?.title || '')
   const [description, setDescription] = useState(chapter?.description || '')
   const [videoUrl, setVideoUrl] = useState(chapter?.video_url || '')
+  const [videoFile, setVideoFile] = useState<File | null>(null)
+  const [videoPreview, setVideoPreview] = useState<string | null>(null)
   const [videoDuration, setVideoDuration] = useState(chapter?.video_duration_seconds || 0)
-  const [isFreePreview, setIsFreePreview] = useState(chapter?.is_free_preview || false)
+
+  const videoInputRef = useRef<HTMLInputElement>(null)
+
+  // Solo crear preview local, no subir todavia
+  const handleVideoChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Limpiar preview anterior si existe
+    if (videoPreview) {
+      URL.revokeObjectURL(videoPreview)
+    }
+
+    // Crear preview local
+    const objectUrl = URL.createObjectURL(file)
+    setVideoFile(file)
+    setVideoPreview(objectUrl)
+    setVideoUrl('') // Limpiar URL anterior si existe
+
+    // Detectar duracion del video
+    const videoElement = document.createElement('video')
+    videoElement.preload = 'metadata'
+    videoElement.src = objectUrl
+
+    videoElement.onloadedmetadata = () => {
+      setVideoDuration(Math.round(videoElement.duration))
+    }
+
+    if (videoInputRef.current) {
+      videoInputRef.current.value = ''
+    }
+  }
+
+  const handleRemoveVideo = () => {
+    if (videoPreview) {
+      URL.revokeObjectURL(videoPreview)
+    }
+    setVideoFile(null)
+    setVideoPreview(null)
+    setVideoUrl('')
+    setVideoDuration(0)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -38,12 +79,32 @@ export function ChapterForm({ courseId, chapter, onSuccess }: ChapterFormProps) 
     setError(null)
 
     try {
+      let finalVideoUrl = videoUrl
+
+      // Subir video si hay archivo nuevo
+      if (videoFile) {
+        const formData = new FormData()
+        formData.append('file', videoFile)
+        formData.append('folder', 'course-videos')
+
+        const uploadRes = await fetch('/api/admin/upload', {
+          method: 'POST',
+          body: formData
+        })
+        const uploadData = await uploadRes.json()
+
+        if (uploadData.success) {
+          finalVideoUrl = uploadData.url
+        } else {
+          throw new Error(uploadData.error || 'Error al subir video')
+        }
+      }
+
       const body = {
         title,
         description: description || null,
-        video_url: videoUrl || null,
-        video_duration_seconds: videoDuration,
-        is_free_preview: isFreePreview
+        video_url: finalVideoUrl || null,
+        video_duration_seconds: videoDuration
       }
 
       const url = isEditing
@@ -62,6 +123,11 @@ export function ChapterForm({ courseId, chapter, onSuccess }: ChapterFormProps) 
         throw new Error(data.error || 'Error al guardar')
       }
 
+      // Limpiar preview
+      if (videoPreview) {
+        URL.revokeObjectURL(videoPreview)
+      }
+
       if (onSuccess) {
         onSuccess()
       } else if (!isEditing) {
@@ -77,18 +143,6 @@ export function ChapterForm({ courseId, chapter, onSuccess }: ChapterFormProps) 
       setLoading(false)
     }
   }
-
-  const formatDurationInput = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return { mins, secs }
-  }
-
-  const handleDurationChange = (mins: number, secs: number) => {
-    setVideoDuration(mins * 60 + secs)
-  }
-
-  const { mins, secs } = formatDurationInput(videoDuration)
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -136,93 +190,64 @@ export function ChapterForm({ courseId, chapter, onSuccess }: ChapterFormProps) 
               <h3 className="text-lg font-semibold text-white">Video</h3>
             </div>
 
-            <div>
-              <label className="text-sm text-slate-400 mb-2 block">URL del video</label>
-              <input
-                type="url"
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="https://youtube.com/watch?v=... o https://vimeo.com/..."
-                className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-indigo-500"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                Soporta YouTube, Vimeo o URLs directas de video
-              </p>
+            <div className="aspect-video rounded-lg bg-slate-700 overflow-hidden relative">
+              {(videoPreview || videoUrl) ? (
+                <>
+                  <video src={videoPreview || videoUrl} controls className="w-full h-full" />
+                  <button
+                    type="button"
+                    onClick={handleRemoveVideo}
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-red-500/80 hover:bg-red-500 text-white transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </>
+              ) : (
+                <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer hover:bg-slate-600/50 transition-colors">
+                  <Upload className="h-8 w-8 text-slate-500 mb-2" />
+                  <span className="text-sm text-slate-400">Subir video</span>
+                  <span className="text-xs text-slate-500 mt-1">MP4, WebM, MOV hasta 50MB</span>
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime,video/*"
+                    onChange={handleVideoChange}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
 
-            {videoUrl && (
-              <div className="aspect-video rounded-lg bg-slate-700 overflow-hidden">
-                {videoUrl.includes('youtube') || videoUrl.includes('youtu.be') ? (
-                  <iframe
-                    src={getYouTubeEmbedUrl(videoUrl)}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : videoUrl.includes('vimeo') ? (
-                  <iframe
-                    src={getVimeoEmbedUrl(videoUrl)}
-                    className="w-full h-full"
-                    allow="autoplay; fullscreen; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : (
-                  <video src={videoUrl} controls className="w-full h-full" />
-                )}
-              </div>
+            {!videoUrl && !videoPreview && (
+              <p className="text-xs text-slate-500 text-center">
+                Haz clic en el area para subir un video. La duracion se detectara automaticamente.
+              </p>
             )}
 
-            <div>
-              <label className="text-sm text-slate-400 mb-2 flex items-center gap-2">
+            {videoDuration > 0 && (
+              <div className="flex items-center gap-2 text-sm text-slate-400">
                 <Clock className="h-4 w-4" />
-                Duracion del video
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={mins}
-                  onChange={(e) => handleDurationChange(parseInt(e.target.value) || 0, secs)}
-                  min={0}
-                  className="w-20 px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-center outline-none focus:border-indigo-500"
-                />
-                <span className="text-slate-400">min</span>
-                <input
-                  type="number"
-                  value={secs}
-                  onChange={(e) => handleDurationChange(mins, parseInt(e.target.value) || 0)}
-                  min={0}
-                  max={59}
-                  className="w-20 px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-center outline-none focus:border-indigo-500"
-                />
-                <span className="text-slate-400">seg</span>
+                <span>Duracion: {Math.floor(videoDuration / 60)} min {videoDuration % 60} seg</span>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Settings */}
-          <div className="p-6 rounded-xl bg-slate-800/50 border border-slate-700/50 space-y-4">
-            <h3 className="text-lg font-semibold text-white">Configuracion</h3>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-white">Preview gratuito</p>
-                <p className="text-xs text-slate-400">Visible sin suscripcion</p>
-              </div>
-              <Switch
-                checked={isFreePreview}
-                onCheckedChange={setIsFreePreview}
-              />
-            </div>
-          </div>
-
           {/* Note about materials */}
           {!isEditing && (
             <div className="p-4 rounded-xl bg-indigo-600/10 border border-indigo-500/20">
               <p className="text-sm text-indigo-300">
                 Despues de crear el capitulo podras agregar materiales complementarios (PDFs, textos, enlaces).
+              </p>
+            </div>
+          )}
+
+          {isEditing && (
+            <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
+              <p className="text-sm text-slate-400">
+                Puedes agregar materiales complementarios en la seccion de materiales despues de guardar.
               </p>
             </div>
           )}
@@ -256,19 +281,3 @@ export function ChapterForm({ courseId, chapter, onSuccess }: ChapterFormProps) 
   )
 }
 
-// Helper functions
-function getYouTubeEmbedUrl(url: string): string {
-  let videoId = ''
-  if (url.includes('youtu.be/')) {
-    videoId = url.split('youtu.be/')[1].split('?')[0]
-  } else if (url.includes('youtube.com/watch')) {
-    const urlParams = new URLSearchParams(url.split('?')[1])
-    videoId = urlParams.get('v') || ''
-  }
-  return `https://www.youtube.com/embed/${videoId}`
-}
-
-function getVimeoEmbedUrl(url: string): string {
-  const videoId = url.split('/').pop()?.split('?')[0] || ''
-  return `https://player.vimeo.com/video/${videoId}`
-}

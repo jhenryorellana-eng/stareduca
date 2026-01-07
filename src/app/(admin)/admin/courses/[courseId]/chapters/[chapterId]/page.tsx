@@ -117,7 +117,7 @@ export default function EditChapterPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href={`/admin/courses/${courseId}/chapters`}>
-            <Button variant="ghost" className="text-slate-400 hover:text-white">
+            <Button variant="ghost" className="border-1 border-transparent text-slate-400 hover:text-white hover:border-slate-700 hover:bg-transparent">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Volver
             </Button>
@@ -132,7 +132,7 @@ export default function EditChapterPage() {
           variant="outline"
           onClick={handleDelete}
           disabled={deleting}
-          className="border-red-600 text-red-400 hover:bg-red-600/20"
+          className="border-red-600 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white"
         >
           {deleting ? (
             <Loader2 className="h-4 w-4 animate-spin mr-2" />

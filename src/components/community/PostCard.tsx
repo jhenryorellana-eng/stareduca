@@ -1,13 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import {
   Heart,
   MessageCircle,
   MoreHorizontal,
   Trash2,
-  Edit,
   ThumbsUp,
   Sparkles,
   Lightbulb,
@@ -23,6 +22,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { ReactionsModal } from './ReactionsModal'
 
 interface Author {
   id: string
@@ -48,7 +48,6 @@ interface PostCardProps {
   currentStudentId?: string
   onReact?: (postId: string, type: string) => void
   onDelete?: (postId: string) => void
-  onEdit?: (postId: string) => void
   compact?: boolean
 }
 
@@ -123,11 +122,29 @@ export function PostCard({
   currentStudentId,
   onReact,
   onDelete,
-  onEdit,
   compact = false
 }: PostCardProps) {
   const [showReactions, setShowReactions] = useState(false)
+  const [showReactionsModal, setShowReactionsModal] = useState(false)
   const [isReacting, setIsReacting] = useState(false)
+  const reactionsRef = useRef<HTMLDivElement>(null)
+
+  // Click outside to close reactions popup
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (reactionsRef.current && !reactionsRef.current.contains(event.target as Node)) {
+        setShowReactions(false)
+      }
+    }
+
+    if (showReactions) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showReactions])
 
   const isAuthor = currentStudentId === post.author.id
   const isAdmin = post.author.role === 'admin'
@@ -206,21 +223,13 @@ export function PostCard({
                 <MoreHorizontal className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
+
             <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700">
-              {isAuthor && (
-                <DropdownMenuItem
-                  onClick={() => onEdit?.(post.id)}
-                  className="text-slate-300 focus:bg-slate-700"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Editar
-                </DropdownMenuItem>
-              )}
               <DropdownMenuItem
                 onClick={() => onDelete?.(post.id)}
-                className="text-red-400 focus:bg-slate-700"
+                className="text-slate-300 border-transparent border-1 focus:bg-red-400/40 focus:text-red-400 focus:border-red-400"
               >
-                <Trash2 className="h-4 w-4 mr-2" />
+                <Trash2 className="h-4 w-4 mr-2 *:text-white" />
                 Eliminar
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -252,39 +261,39 @@ export function PostCard({
       {/* Actions */}
       <div className="mt-4 flex items-center gap-1">
         {/* Reaction button with popup */}
-        <div className="relative">
+        <div className="relative flex items-center" ref={reactionsRef}>
           <Button
             variant="ghost"
             size="sm"
             className={cn(
-              "gap-2 text-slate-400 hover:text-white",
+              "text-slate-400 border-1 border-transparent hover:text-white hover:bg-indigo-500/20 hover:border-indigo-500 hover:text-indigo-500 pr-1",
               post.userReaction && currentReaction?.color
             )}
-            onMouseEnter={() => setShowReactions(true)}
-            onMouseLeave={() => setShowReactions(false)}
-            onClick={() => {
-              if (post.userReaction) {
-                handleReact(post.userReaction)
-              } else {
-                handleReact('like')
-              }
-            }}
+            onClick={() => setShowReactions(!showReactions)}
           >
             {currentReaction ? (
               <currentReaction.icon className="h-4 w-4" />
             ) : (
               <ThumbsUp className="h-4 w-4" />
             )}
-            <span>{post.reactions_count || ''}</span>
           </Button>
+
+          {/* Reaction count - clickable to see who reacted */}
+          {post.reactions_count > 0 && (
+            <button
+              onClick={() => setShowReactionsModal(true)}
+              className={cn(
+                "text-sm px-1 hover:underline transition-colors",
+                post.userReaction && currentReaction ? currentReaction.color : "text-slate-400 hover:text-white"
+              )}
+            >
+              {post.reactions_count}
+            </button>
+          )}
 
           {/* Reactions popup */}
           {showReactions && (
-            <div
-              className="absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full bg-slate-700 border border-slate-600 shadow-lg z-10"
-              onMouseEnter={() => setShowReactions(true)}
-              onMouseLeave={() => setShowReactions(false)}
-            >
+            <div className="absolute bottom-full left-0 mb-2 flex gap-1 p-2 rounded-full bg-slate-700 border border-slate-600 shadow-lg z-10">
               {REACTIONS.map((reaction) => (
                 <button
                   key={reaction.type}
@@ -304,12 +313,20 @@ export function PostCard({
 
         {/* Comments button */}
         <Link href={`/community/post/${post.id}`}>
-          <Button variant="ghost" size="sm" className="gap-2 text-slate-400 hover:text-white">
+          <Button variant="ghost" size="sm" className="gap-2 text-slate-400 border-1 border-transparent hover:text-white hover:bg-indigo-500/20 hover:border-indigo-500 hover:text-indigo-500">
             <MessageCircle className="h-4 w-4" />
             <span>{post.comments_count || ''}</span>
           </Button>
         </Link>
       </div>
+
+      {/* Reactions Modal */}
+      <ReactionsModal
+        isOpen={showReactionsModal}
+        onClose={() => setShowReactionsModal(false)}
+        targetType="post"
+        targetId={post.id}
+      />
     </article>
   )
 }

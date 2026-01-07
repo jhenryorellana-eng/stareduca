@@ -14,7 +14,7 @@ export default function NewChapterPage() {
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Link href={`/admin/courses/${courseId}/chapters`}>
-          <Button variant="ghost" className="text-slate-400 hover:text-white">
+          <Button variant="ghost" className="border-1 border-transparent text-slate-400 hover:text-white hover:border-slate-700 hover:bg-transparent">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Volver
           </Button>

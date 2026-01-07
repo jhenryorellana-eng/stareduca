@@ -6,14 +6,16 @@ import {
   Loader2,
   Users,
   Mail,
-  Phone,
-  MapPin,
   Calendar,
   Crown,
   Clock,
   ChevronLeft,
   ChevronRight,
-  Filter
+  Filter,
+  CreditCard,
+  Trash2,
+  AlertTriangle,
+  X
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,12 +25,12 @@ interface Student {
   student_code: string
   full_name: string
   email: string
-  phone: string | null
-  country: string | null
+  generated_email: string
   role: string
   subscription_status: string
   subscription_type: string | null
-  subscription_expires_at: string | null
+  subscription_end_date: string | null
+  stripe_customer_id: string | null
   created_at: string
   last_login_at: string | null
 }
@@ -51,6 +53,13 @@ export default function AdminStudentsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+
+  // Delete modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [studentToDelete, setStudentToDelete] = useState<Student | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   const fetchStudents = async (page = 1) => {
     setLoading(true)
@@ -79,6 +88,53 @@ export default function AdminStudentsPage() {
     const timeout = setTimeout(() => fetchStudents(1), 300)
     return () => clearTimeout(timeout)
   }, [search, statusFilter])
+
+  const openDeleteModal = (student: Student) => {
+    setStudentToDelete(student)
+    setDeleteConfirmText('')
+    setDeleteError('')
+    setShowDeleteModal(true)
+  }
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false)
+    setStudentToDelete(null)
+    setDeleteConfirmText('')
+    setDeleteError('')
+  }
+
+  const handleDeleteStudent = async () => {
+    if (!studentToDelete) return
+    if (deleteConfirmText !== 'ELIMINAR') {
+      setDeleteError('Debes escribir ELIMINAR para confirmar')
+      return
+    }
+
+    setDeleting(true)
+    setDeleteError('')
+
+    try {
+      const response = await fetch(`/api/admin/students/${studentToDelete.id}`, {
+        method: 'DELETE',
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        setDeleteError(data.error || 'Error al eliminar estudiante')
+        return
+      }
+
+      // Cerrar modal y recargar lista
+      closeDeleteModal()
+      fetchStudents(pagination.page)
+    } catch (error) {
+      console.error('Error deleting student:', error)
+      setDeleteError('Error al eliminar estudiante')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -183,6 +239,7 @@ export default function AdminStudentsPage() {
                   <th className="text-left p-4 text-sm font-medium text-slate-400">Suscripcion</th>
                   <th className="text-left p-4 text-sm font-medium text-slate-400">Registro</th>
                   <th className="text-left p-4 text-sm font-medium text-slate-400">Ultimo acceso</th>
+                  <th className="text-right p-4 text-sm font-medium text-slate-400">Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -202,21 +259,15 @@ export default function AdminStudentsPage() {
                               <Crown className="h-4 w-4 text-amber-400" />
                             )}
                           </div>
-                          <div className="flex items-center gap-3 text-sm text-slate-500">
+                          <div className="flex flex-col gap-0.5 text-sm text-slate-500">
                             <span className="flex items-center gap-1">
                               <Mail className="h-3.5 w-3.5" />
-                              {student.email}
+                              {student.email || student.generated_email}
                             </span>
-                            {student.phone && (
+                            {student.stripe_customer_id && (
                               <span className="flex items-center gap-1">
-                                <Phone className="h-3.5 w-3.5" />
-                                {student.phone}
-                              </span>
-                            )}
-                            {student.country && (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="h-3.5 w-3.5" />
-                                {student.country}
+                                <CreditCard className="h-3.5 w-3.5" />
+                                <span className="text-xs">{student.stripe_customer_id}</span>
                               </span>
                             )}
                           </div>
@@ -234,9 +285,9 @@ export default function AdminStudentsPage() {
                         {student.subscription_type && (
                           <p className="text-xs text-slate-500 capitalize">{student.subscription_type}</p>
                         )}
-                        {student.subscription_expires_at && (
+                        {student.subscription_end_date && (
                           <p className="text-xs text-slate-500">
-                            Expira: {formatDate(student.subscription_expires_at)}
+                            Expira: {formatDate(student.subscription_end_date)}
                           </p>
                         )}
                       </div>
@@ -252,6 +303,17 @@ export default function AdminStudentsPage() {
                         <Clock className="h-4 w-4" />
                         {formatRelativeTime(student.last_login_at)}
                       </div>
+                    </td>
+                    <td className="p-4 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openDeleteModal(student)}
+                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        title="Eliminar estudiante"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -292,6 +354,114 @@ export default function AdminStudentsPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && studentToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={closeDeleteModal}
+          />
+
+          {/* Modal */}
+          <div className="relative bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+            {/* Close button */}
+            <button
+              onClick={closeDeleteModal}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-500/20 rounded-lg">
+                <AlertTriangle className="h-6 w-6 text-red-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white">
+                Eliminar Estudiante
+              </h3>
+            </div>
+
+            {/* Content */}
+            <div className="space-y-4">
+              <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                <p className="text-sm text-slate-400">Estudiante a eliminar:</p>
+                <p className="font-medium text-white">{studentToDelete.full_name}</p>
+                <p className="text-sm text-slate-500">{studentToDelete.email}</p>
+                <p className="text-xs text-slate-600 mt-1">
+                  Codigo: {studentToDelete.student_code}
+                </p>
+              </div>
+
+              <div className="text-sm text-slate-400">
+                <p className="mb-2">Esta accion eliminara permanentemente:</p>
+                <ul className="list-disc list-inside space-y-1 text-slate-500">
+                  <li>Cuenta y perfil del estudiante</li>
+                  <li>Posts, comentarios y reacciones</li>
+                  <li>Progreso en todos los cursos</li>
+                  <li>Historial de suscripciones y pagos</li>
+                  <li>Datos de afiliado (si aplica)</li>
+                  <li>Archivos en storage (avatar, imagenes)</li>
+                </ul>
+              </div>
+
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                <p className="text-sm text-red-400 font-medium">
+                  Esta accion NO se puede deshacer.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm text-slate-400">
+                  Escribe <span className="font-mono text-red-400">ELIMINAR</span> para confirmar:
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="ELIMINAR"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-600 outline-none focus:border-red-500/50"
+                />
+              </div>
+
+              {deleteError && (
+                <p className="text-sm text-red-400">{deleteError}</p>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={closeDeleteModal}
+                className="flex-1 border-slate-700 text-slate-300"
+                disabled={deleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleDeleteStudent}
+                disabled={deleting || deleteConfirmText !== 'ELIMINAR'}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Eliminando...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Eliminar Permanentemente
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

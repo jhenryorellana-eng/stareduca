@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, BookOpen, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2, BookOpen, Trash2, ClipboardCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CourseForm } from '@/components/admin/CourseForm'
 
@@ -13,6 +13,7 @@ interface Course {
   description: string | null
   short_description: string | null
   thumbnail_url: string | null
+  presentation_video_url: string | null
   instructor_name: string | null
   instructor_bio: string | null
   category: string | null
@@ -105,10 +106,10 @@ export default function EditCoursePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between flex-col gap-4 md:flex-row md:items-center md:gap-0">
         <div className="flex items-center gap-4">
           <Link href="/admin/courses">
-            <Button variant="ghost" className="text-slate-400 hover:text-white">
+            <Button variant="ghost" className="border-1 border-transparent text-slate-400 hover:text-white hover:border-slate-700 hover:bg-transparent">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Volver
             </Button>
@@ -121,9 +122,16 @@ export default function EditCoursePage() {
 
         <div className="flex items-center gap-3">
           <Link href={`/admin/courses/${courseId}/chapters`}>
-            <Button variant="outline" className="border-indigo-600 text-indigo-400 hover:bg-indigo-600/20">
+            <Button variant="outline" className="border-indigo-600 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600 hover:text-white">
               <BookOpen className="h-4 w-4 mr-2" />
               Capitulos ({course.chapters?.length || 0})
+            </Button>
+          </Link>
+
+          <Link href={`/admin/courses/${courseId}/exam`}>
+            <Button variant="outline" className="border-emerald-600 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white">
+              <ClipboardCheck className="h-4 w-4 mr-2" />
+              Examen
             </Button>
           </Link>
 
@@ -131,7 +139,7 @@ export default function EditCoursePage() {
             variant="outline"
             onClick={handleDelete}
             disabled={deleting}
-            className="border-red-600 text-red-400 hover:bg-red-600/20"
+            className="border-red-600 bg-red-600/20 text-red-400 hover:bg-red-600 hover:text-white"
           >
             {deleting ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />

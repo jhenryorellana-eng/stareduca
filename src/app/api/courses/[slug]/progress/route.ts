@@ -6,6 +6,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
+
+// Service client para bypasear RLS
+const serviceClient = createServiceClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function POST(
   request: NextRequest,
@@ -14,7 +21,7 @@ export async function POST(
   try {
     const { slug } = await params
     const body = await request.json()
-    const { chapterId, completed, progressPercent, lastPositionSeconds } = body
+    const { chapterId, completed, lastPositionSeconds } = body
 
     if (!chapterId) {
       return NextResponse.json(
@@ -44,10 +51,10 @@ export async function POST(
       )
     }
 
-    // Obtener el curso por slug para verificar que existe
-    const { data: course, error: courseError } = await supabase
+    // Obtener el curso por slug con sus capítulos
+    const { data: course, error: courseError } = await serviceClient
       .from('courses')
-      .select('id')
+      .select('id, chapters(id)')
       .eq('slug', slug)
       .single()
 
@@ -58,53 +65,68 @@ export async function POST(
       )
     }
 
-    // Verificar que el capitulo pertenece al curso
-    const { data: chapter, error: chapterError } = await supabase
-      .from('chapters')
-      .select('id')
-      .eq('id', chapterId)
-      .eq('course_id', course.id)
-      .single()
+    const totalChapters = course.chapters?.length || 0
 
-    if (chapterError || !chapter) {
+    // Verificar que el capitulo pertenece al curso
+    const chapterBelongsToCourse = course.chapters?.some((ch: any) => ch.id === chapterId)
+    if (!chapterBelongsToCourse) {
       return NextResponse.json(
         { error: 'Capitulo no encontrado en este curso' },
         { status: 404 }
       )
     }
 
-    // Upsert progreso
-    const progressData: {
-      student_id: string
-      course_id: string
-      chapter_id: string
-      completed?: boolean
-      progress_percent?: number
-      last_position_seconds?: number
-      updated_at: string
-    } = {
-      student_id: studentId,
-      course_id: course.id,
-      chapter_id: chapterId,
+    // Obtener progreso actual del estudiante para este curso
+    const { data: existingProgress } = await serviceClient
+      .from('student_progress')
+      .select('*')
+      .eq('student_id', studentId)
+      .eq('course_id', course.id)
+      .single()
+
+    // Preparar datos de actualización
+    const updateData: Record<string, any> = {
+      current_chapter_id: chapterId,
+      last_accessed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
 
-    if (typeof completed === 'boolean') {
-      progressData.completed = completed
-    }
-
-    if (typeof progressPercent === 'number') {
-      progressData.progress_percent = Math.min(100, Math.max(0, progressPercent))
-    }
-
+    // Si hay posición del video
     if (typeof lastPositionSeconds === 'number') {
-      progressData.last_position_seconds = lastPositionSeconds
+      updateData.last_watched_position_seconds = lastPositionSeconds
     }
 
-    const { data: progress, error: progressError } = await supabase
+    // Si marca como completado
+    if (completed === true) {
+      const currentCompleted: string[] = existingProgress?.chapters_completed || []
+
+      // Agregar chapterId si no está ya en el array
+      if (!currentCompleted.includes(chapterId)) {
+        currentCompleted.push(chapterId)
+      }
+
+      updateData.chapters_completed = currentCompleted
+
+      // Calcular porcentaje de progreso
+      updateData.progress_percentage = totalChapters > 0
+        ? Math.round((currentCompleted.length / totalChapters) * 100)
+        : 0
+
+      // Si completó todos los capítulos, marcar completed_at
+      if (currentCompleted.length >= totalChapters) {
+        updateData.completed_at = new Date().toISOString()
+      }
+    }
+
+    // Upsert el progreso
+    const { data: progress, error: progressError } = await serviceClient
       .from('student_progress')
-      .upsert(progressData, {
-        onConflict: 'student_id,chapter_id',
+      .upsert({
+        student_id: studentId,
+        course_id: course.id,
+        ...updateData,
+      }, {
+        onConflict: 'student_id,course_id',
       })
       .select()
       .single()

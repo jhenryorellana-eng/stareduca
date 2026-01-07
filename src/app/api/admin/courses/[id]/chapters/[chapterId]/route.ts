@@ -1,20 +1,32 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Helper para extraer path del storage desde URL
+function extractStoragePath(url: string | null): string | null {
+  if (!url) return null
+  // URL format: https://{project}.supabase.co/storage/v1/object/public/{bucket}/{path}
+  const match = url.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/)
+  return match ? match[1] : null
+}
+
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -31,35 +43,15 @@ export async function GET(
 ) {
   try {
     const { id: courseId, chapterId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
-    // Obtener capitulo con materiales
-    const { data: chapter, error } = await supabase
+    // Obtener capitulo (sin JOIN para evitar errores de relacion)
+    const { data: chapter, error } = await serviceClient
       .from('chapters')
-      .select(`
-        *,
-        chapter_materials (
-          id,
-          material_type,
-          title,
-          description,
-          content,
-          file_url,
-          file_size,
-          order_index,
-          created_at
-        )
-      `)
+      .select('*')
       .eq('id', chapterId)
       .eq('course_id', courseId)
       .single()
@@ -71,14 +63,27 @@ export async function GET(
       )
     }
 
-    // Ordenar materiales
-    if (chapter.chapter_materials) {
-      chapter.chapter_materials.sort((a: any, b: any) => a.order_index - b.order_index)
+    // Obtener materiales por separado (no falla si tabla no existe)
+    let materials: any[] = []
+    try {
+      const { data } = await serviceClient
+        .from('chapter_materials')
+        .select('id, type, title, content, file_url, file_size_bytes, order_index, created_at')
+        .eq('chapter_id', chapterId)
+        .order('order_index', { ascending: true })
+      // Mapear nombres de campos de BD a nombres que espera el frontend
+      materials = (data || []).map(m => ({
+        ...m,
+        material_type: m.type,
+        file_size: m.file_size_bytes
+      }))
+    } catch (e) {
+      console.error('Error fetching materials:', e)
     }
 
     return NextResponse.json({
       success: true,
-      chapter
+      chapter: { ...chapter, chapter_materials: materials }
     })
 
   } catch (error) {
@@ -97,22 +102,15 @@ export async function PATCH(
 ) {
   try {
     const { id: courseId, chapterId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
-    // Verificar que el capitulo existe
-    const { data: existingChapter } = await supabase
+    // Verificar que el capitulo existe y obtener video actual
+    const { data: existingChapter } = await serviceClient
       .from('chapters')
-      .select('id')
+      .select('id, video_url')
       .eq('id', chapterId)
       .eq('course_id', courseId)
       .single()
@@ -127,7 +125,7 @@ export async function PATCH(
     const body = await request.json()
     const allowedFields = [
       'title', 'description', 'video_url', 'video_duration_seconds',
-      'is_free_preview', 'order_index', 'chapter_number'
+      'order_index', 'chapter_number'
     ]
 
     const updates: Record<string, any> = {}
@@ -144,9 +142,23 @@ export async function PATCH(
       )
     }
 
+    // Si hay nuevo video y es diferente al anterior, eliminar el anterior
+    if (updates.video_url !== undefined &&
+        existingChapter.video_url &&
+        existingChapter.video_url !== updates.video_url) {
+      const oldPath = extractStoragePath(existingChapter.video_url)
+      if (oldPath) {
+        try {
+          await serviceClient.storage.from('chapter-videos').remove([oldPath])
+        } catch (e) {
+          console.error('Error deleting old video:', e)
+        }
+      }
+    }
+
     updates.updated_at = new Date().toISOString()
 
-    const { data: chapter, error } = await supabase
+    const { data: chapter, error } = await serviceClient
       .from('chapters')
       .update(updates)
       .eq('id', chapterId)
@@ -185,35 +197,41 @@ export async function DELETE(
 ) {
   try {
     const { id: courseId, chapterId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
-    // Verificar que el capitulo existe
-    const { data: existingChapter } = await supabase
+    // Obtener capitulo con video_url
+    const { data: chapter } = await serviceClient
       .from('chapters')
-      .select('id, title')
+      .select('id, title, video_url')
       .eq('id', chapterId)
       .eq('course_id', courseId)
       .single()
 
-    if (!existingChapter) {
+    if (!chapter) {
       return NextResponse.json(
         { success: false, error: 'Capitulo no encontrado' },
         { status: 404 }
       )
     }
 
+    // Eliminar video del Storage si existe
+    if (chapter.video_url) {
+      const path = extractStoragePath(chapter.video_url)
+      if (path) {
+        try {
+          await serviceClient.storage.from('chapter-videos').remove([path])
+        } catch (storageError) {
+          console.error(`Error deleting video ${path}:`, storageError)
+          // Continuar aunque falle la eliminacion del archivo
+        }
+      }
+    }
+
     // Eliminar capitulo (los materiales se eliminan en cascada)
-    const { error } = await supabase
+    const { error } = await serviceClient
       .from('chapters')
       .delete()
       .eq('id', chapterId)
@@ -227,12 +245,12 @@ export async function DELETE(
     }
 
     // Actualizar total_chapters y duracion del curso
-    const { count } = await supabase
+    const { count } = await serviceClient
       .from('chapters')
       .select('id', { count: 'exact', head: true })
       .eq('course_id', courseId)
 
-    await supabase
+    await serviceClient
       .from('courses')
       .update({
         total_chapters: count || 0,
@@ -255,7 +273,7 @@ export async function DELETE(
 
 // Helper para actualizar duracion total del curso
 async function updateCourseDuration(courseId: string) {
-  const { data: chapters } = await supabase
+  const { data: chapters } = await serviceClient
     .from('chapters')
     .select('video_duration_seconds')
     .eq('course_id', courseId)
@@ -263,7 +281,7 @@ async function updateCourseDuration(courseId: string) {
   const totalSeconds = chapters?.reduce((sum, ch) => sum + (ch.video_duration_seconds || 0), 0) || 0
   const totalMinutes = Math.ceil(totalSeconds / 60)
 
-  await supabase
+  await serviceClient
     .from('courses')
     .update({ total_duration_minutes: totalMinutes })
     .eq('id', courseId)

@@ -1,8 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Service client para bypasear RLS
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
@@ -16,20 +17,14 @@ export async function POST(
 ) {
   try {
     const { commentId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
 
-    if (!authToken) {
-      return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
+    // Verificar autenticación
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
     if (!user) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
+        { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
@@ -53,7 +48,7 @@ export async function POST(
     }
 
     // Verificar que el comentario existe
-    const { data: comment } = await supabase
+    const { data: comment } = await serviceClient
       .from('comments')
       .select('id, author_id, reactions_count, post_id')
       .eq('id', commentId)
@@ -67,7 +62,7 @@ export async function POST(
     }
 
     // Verificar si ya existe una reaccion
-    const { data: existingReaction } = await supabase
+    const { data: existingReaction } = await serviceClient
       .from('reactions')
       .select('id, type')
       .eq('student_id', studentId)
@@ -78,12 +73,12 @@ export async function POST(
     if (existingReaction) {
       if (existingReaction.type === type) {
         // Misma reaccion: eliminar (toggle off)
-        await supabase
+        await serviceClient
           .from('reactions')
           .delete()
           .eq('id', existingReaction.id)
 
-        await supabase
+        await serviceClient
           .from('comments')
           .update({ reactions_count: Math.max(0, comment.reactions_count - 1) })
           .eq('id', commentId)
@@ -95,7 +90,7 @@ export async function POST(
         })
       } else {
         // Diferente reaccion: actualizar
-        await supabase
+        await serviceClient
           .from('reactions')
           .update({ type })
           .eq('id', existingReaction.id)
@@ -109,7 +104,7 @@ export async function POST(
     }
 
     // Nueva reaccion
-    await supabase.from('reactions').insert({
+    await serviceClient.from('reactions').insert({
       student_id: studentId,
       target_type: 'comment',
       target_id: commentId,
@@ -117,20 +112,20 @@ export async function POST(
     })
 
     const newCount = comment.reactions_count + 1
-    await supabase
+    await serviceClient
       .from('comments')
       .update({ reactions_count: newCount })
       .eq('id', commentId)
 
     // Notificar al autor del comentario (si no es el mismo)
     if (comment.author_id !== studentId) {
-      const { data: reactor } = await supabase
+      const { data: reactor } = await serviceClient
         .from('students')
         .select('full_name')
         .eq('id', studentId)
         .single()
 
-      await supabase.from('notifications').insert({
+      await serviceClient.from('notifications').insert({
         student_id: comment.author_id,
         type: 'reaction',
         title: 'Nueva reaccion',
@@ -149,6 +144,62 @@ export async function POST(
 
   } catch (error) {
     console.error('Error in POST /api/community/comments/[commentId]/reactions:', error)
+    return NextResponse.json(
+      { success: false, error: 'Error del servidor' },
+      { status: 500 }
+    )
+  }
+}
+
+// GET /api/community/comments/[commentId]/reactions - Obtener todas las reacciones
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ commentId: string }> }
+) {
+  try {
+    const { commentId } = await params
+
+    const { data: reactions, error } = await serviceClient
+      .from('reactions')
+      .select(`
+        id,
+        type,
+        created_at,
+        student:students!student_id (
+          id,
+          full_name,
+          avatar_url,
+          student_code
+        )
+      `)
+      .eq('target_type', 'comment')
+      .eq('target_id', commentId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      return NextResponse.json(
+        { success: false, error: 'Error al cargar reacciones' },
+        { status: 500 }
+      )
+    }
+
+    // Agrupar por tipo
+    const grouped = reactions?.reduce((acc, r) => {
+      if (!acc[r.type]) {
+        acc[r.type] = []
+      }
+      acc[r.type].push(r.student)
+      return acc
+    }, {} as Record<string, any[]>) || {}
+
+    return NextResponse.json({
+      success: true,
+      reactions: grouped,
+      total: reactions?.length || 0
+    })
+
+  } catch (error) {
+    console.error('Error in GET /api/community/comments/[commentId]/reactions:', error)
     return NextResponse.json(
       { success: false, error: 'Error del servidor' },
       { status: 500 }

@@ -5,49 +5,50 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { verifyActiveSubscription } from '@/lib/auth/subscriptionCheck'
+
+// Service client para bypasear RLS en nested selects
+const serviceClient = createServiceClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Verificar autenticacion y suscripcion activa
+    const student = await verifyActiveSubscription()
 
-    // Verificar autenticacion
-    const { data: { user } } = await supabase.auth.getUser()
-
-    if (!user) {
+    if (!student) {
       return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
+        { error: 'Requiere suscripcion activa', requiresSubscription: true },
+        { status: 403 }
       )
     }
 
-    const studentId = user.user_metadata?.student_id
+    const studentId = student.id
 
-    if (!studentId) {
-      return NextResponse.json(
-        { error: 'Estudiante no encontrado' },
-        { status: 404 }
-      )
-    }
-
-    // Obtener cursos publicados
-    const { data: courses, error: coursesError } = await supabase
+    // Obtener cursos publicados con capítulos (usando serviceClient para bypasear RLS)
+    const { data: courses, error: coursesError } = await serviceClient
       .from('courses')
       .select(`
         id,
         slug,
         title,
         description,
+        short_description,
         thumbnail_url,
         instructor_name,
-        instructor_avatar_url,
-        total_chapters,
-        total_duration_seconds,
-        difficulty_level,
-        status,
-        created_at
+        is_free,
+        category,
+        tags,
+        created_at,
+        chapters (
+          id,
+          video_duration_seconds
+        )
       `)
-      .eq('status', 'published')
+      .eq('is_published', true)
       .order('order_index', { ascending: true })
 
     if (coursesError) {
@@ -59,43 +60,54 @@ export async function GET(request: NextRequest) {
     }
 
     // Obtener progreso del estudiante para cada curso
-    const { data: progress, error: progressError } = await supabase
+    const { data: progress, error: progressError } = await serviceClient
       .from('student_progress')
-      .select('course_id, chapter_id, completed, progress_percent')
+      .select('course_id, chapters_completed, progress_percentage')
       .eq('student_id', studentId)
 
     if (progressError) {
       console.error('Error al obtener progreso:', progressError)
     }
 
-    // Calcular progreso por curso
-    const progressByCourse = new Map<string, { completed: number; total: number }>()
+    // Crear mapa de progreso por curso
+    const progressByCourse = new Map<string, { completed: number; percentage: number }>()
 
     if (progress) {
       for (const p of progress) {
-        const current = progressByCourse.get(p.course_id) || { completed: 0, total: 0 }
-        current.total++
-        if (p.completed) {
-          current.completed++
-        }
-        progressByCourse.set(p.course_id, current)
+        progressByCourse.set(p.course_id, {
+          completed: p.chapters_completed?.length || 0,
+          percentage: p.progress_percentage || 0
+        })
       }
     }
 
-    // Combinar cursos con progreso
+    // Combinar cursos con progreso, calculando valores desde capítulos reales
     const coursesWithProgress = courses.map(course => {
       const courseProgress = progressByCourse.get(course.id)
       const completedChapters = courseProgress?.completed || 0
-      const totalChapters = course.total_chapters || 0
-      const progressPercent = totalChapters > 0
-        ? Math.round((completedChapters / totalChapters) * 100)
+
+      // Calcular valores desde los capítulos reales
+      const chapters = (course as any).chapters || []
+      const actualTotalChapters = chapters.length
+      const totalDurationSeconds = chapters.reduce(
+        (sum: number, ch: any) => sum + (ch.video_duration_seconds || 0),
+        0
+      )
+
+      const progressPercent = actualTotalChapters > 0
+        ? Math.round((completedChapters / actualTotalChapters) * 100)
         : 0
 
+      // Remover chapters del objeto para no enviarlo en la lista
+      const { chapters: _, ...courseWithoutChapters } = course as any
+
       return {
-        ...course,
+        ...courseWithoutChapters,
+        total_chapters: actualTotalChapters,
+        total_duration_seconds: totalDurationSeconds,
         progress: {
           completedChapters,
-          totalChapters,
+          totalChapters: actualTotalChapters,
           percent: progressPercent,
         }
       }

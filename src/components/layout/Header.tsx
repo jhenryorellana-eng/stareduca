@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Menu, Bell, Search, ChevronDown, User, Settings, LogOut, Copy, Check } from 'lucide-react'
+import { Menu, Search, ChevronDown, User, Settings, LogOut, Copy, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { createClient } from '@/lib/supabase/client'
 import { MobileSidebar } from './Sidebar'
+import { NotificationDropdown } from '@/components/notifications/NotificationDropdown'
 
 interface HeaderProps {
   student: {
@@ -98,21 +99,14 @@ export function Header({ student }: HeaderProps) {
           </button>
 
           {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-slate-400 hover:text-white hover:bg-slate-700/50 relative"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-indigo-500" />
-          </Button>
+          <NotificationDropdown />
 
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="flex items-center gap-2 px-2 hover:bg-slate-700/50"
+                className="flex items-center gap-2 px-2 hover:bg-slate-700/50 p-2 h-auto"
               >
                 <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-slate-700 to-slate-600 flex items-center justify-center">
                   {student.avatar_url ? (

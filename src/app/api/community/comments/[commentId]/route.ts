@@ -1,8 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Service client para bypasear RLS
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
@@ -14,28 +15,28 @@ export async function DELETE(
 ) {
   try {
     const { commentId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
 
-    if (!authToken) {
+    // Verificar autenticación
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
+    const studentId = user.user_metadata?.student_id
+    if (!studentId) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
+        { success: false, error: 'Estudiante no encontrado' },
+        { status: 400 }
       )
     }
 
-    const studentId = user.user_metadata?.student_id
-
     // Obtener comentario y verificar permisos
-    const { data: comment } = await supabase
+    const { data: comment } = await serviceClient
       .from('comments')
       .select('id, author_id, post_id')
       .eq('id', commentId)
@@ -49,7 +50,7 @@ export async function DELETE(
     }
 
     // Verificar que es el autor o admin
-    const { data: student } = await supabase
+    const { data: student } = await serviceClient
       .from('students')
       .select('role')
       .eq('id', studentId)
@@ -65,8 +66,15 @@ export async function DELETE(
       )
     }
 
+    // Obtener el post para actualizar el contador
+    const { data: post } = await serviceClient
+      .from('posts')
+      .select('comments_count')
+      .eq('id', comment.post_id)
+      .single()
+
     // Eliminar comentario
-    const { error } = await supabase
+    const { error } = await serviceClient
       .from('comments')
       .delete()
       .eq('id', commentId)
@@ -79,7 +87,12 @@ export async function DELETE(
     }
 
     // Decrementar contador del post
-    await supabase.rpc('decrement_comments_count', { post_id: comment.post_id })
+    if (post) {
+      await serviceClient
+        .from('posts')
+        .update({ comments_count: Math.max(0, post.comments_count - 1) })
+        .eq('id', comment.post_id)
+    }
 
     return NextResponse.json({ success: true })
 

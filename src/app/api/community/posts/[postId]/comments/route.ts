@@ -1,8 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Service client para bypasear RLS
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
@@ -14,18 +15,13 @@ export async function GET(
 ) {
   try {
     const { postId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
 
-    let currentStudentId: string | null = null
-    if (authToken) {
-      const { data: { user } } = await supabase.auth.getUser(authToken)
-      if (user) {
-        currentStudentId = user.user_metadata?.student_id
-      }
-    }
+    // Obtener usuario autenticado
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const currentStudentId = user?.user_metadata?.student_id || null
 
-    const { data: comments, error } = await supabase
+    const { data: comments, error } = await serviceClient
       .from('comments')
       .select(`
         id,
@@ -56,7 +52,7 @@ export async function GET(
     let userReactions: Record<string, string> = {}
     if (currentStudentId && comments && comments.length > 0) {
       const commentIds = comments.map(c => c.id)
-      const { data: reactions } = await supabase
+      const { data: reactions } = await serviceClient
         .from('reactions')
         .select('target_id, type')
         .eq('student_id', currentStudentId)
@@ -108,20 +104,14 @@ export async function POST(
 ) {
   try {
     const { postId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
 
-    if (!authToken) {
-      return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
+    // Verificar autenticación
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
     if (!user) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
+        { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
@@ -152,7 +142,7 @@ export async function POST(
     }
 
     // Verificar que el post existe
-    const { data: post } = await supabase
+    const { data: post } = await serviceClient
       .from('posts')
       .select('id, author_id, comments_count')
       .eq('id', postId)
@@ -166,7 +156,7 @@ export async function POST(
     }
 
     // Crear comentario
-    const { data: comment, error } = await supabase
+    const { data: comment, error } = await serviceClient
       .from('comments')
       .insert({
         post_id: postId,
@@ -200,13 +190,13 @@ export async function POST(
     }
 
     // Incrementar contador de comentarios del post
-    await supabase
+    await serviceClient
       .from('posts')
       .update({ comments_count: post.comments_count + 1 })
       .eq('id', postId)
 
     // Obtener info del comentador para notificaciones
-    const { data: commenter } = await supabase
+    const { data: commenter } = await serviceClient
       .from('students')
       .select('full_name')
       .eq('id', studentId)
@@ -214,7 +204,7 @@ export async function POST(
 
     // Notificar al autor del post (si no es el mismo)
     if (post.author_id !== studentId) {
-      await supabase.from('notifications').insert({
+      await serviceClient.from('notifications').insert({
         student_id: post.author_id,
         type: 'comment',
         title: 'Nuevo comentario',
@@ -227,14 +217,14 @@ export async function POST(
 
     // Si es respuesta a otro comentario, notificar al autor del comentario padre
     if (parent_comment_id) {
-      const { data: parentComment } = await supabase
+      const { data: parentComment } = await serviceClient
         .from('comments')
         .select('author_id')
         .eq('id', parent_comment_id)
         .single()
 
       if (parentComment && parentComment.author_id !== studentId && parentComment.author_id !== post.author_id) {
-        await supabase.from('notifications').insert({
+        await serviceClient.from('notifications').insert({
           student_id: parentComment.author_id,
           type: 'comment',
           title: 'Nueva respuesta',
@@ -253,7 +243,7 @@ export async function POST(
     if (mentions && mentions.length > 0) {
       const studentCodes = mentions.map((m: string) => m.substring(1))
 
-      const { data: mentionedStudents } = await supabase
+      const { data: mentionedStudents } = await serviceClient
         .from('students')
         .select('id, student_code')
         .in('student_code', studentCodes)
@@ -269,7 +259,7 @@ export async function POST(
           }))
 
         if (mentionRecords.length > 0) {
-          await supabase.from('mentions').insert(mentionRecords)
+          await serviceClient.from('mentions').insert(mentionRecords)
 
           const notificationRecords = mentionRecords.map(m => ({
             student_id: m.mentioned_student_id,
@@ -281,7 +271,7 @@ export async function POST(
             action_url: `/community/post/${postId}`
           }))
 
-          await supabase.from('notifications').insert(notificationRecords)
+          await serviceClient.from('notifications').insert(notificationRecords)
         }
       }
     }

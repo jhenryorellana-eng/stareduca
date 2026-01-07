@@ -16,7 +16,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4">
             <Link href="/login">
-              <Button variant="ghost" className="text-slate-300 hover:text-white hover:bg-purple-600/20">
+              <Button variant="ghost" className="text-slate-300 border-2 border-transparent hover:text-indigo-400 hover:bg-transparent hover:border-indigo-500">
                 Iniciar Sesión
               </Button>
             </Link>
@@ -57,7 +57,7 @@ export default function Home() {
               </Button>
             </Link>
             <Link href="#cursos">
-              <Button size="lg" variant="outline" className="text-lg px-8 border-slate-700 text-slate-300 bg-transparent hover:bg-purple-600 hover:border-purple-600 hover:text-white">
+              <Button size="lg" variant="outline" className="text-lg px-8 border-slate-700 text-slate-300 bg-transparent border-2 hover:text-indigo-400 hover:bg-transparent hover:border-indigo-500">
                 Ver Cursos
               </Button>
             </Link>

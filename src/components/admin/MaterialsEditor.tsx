@@ -22,7 +22,6 @@ interface Material {
   id: string
   material_type: 'video' | 'text' | 'pdf' | 'link' | 'download'
   title: string
-  description: string | null
   content: string | null
   file_url: string | null
   file_size: number | null
@@ -216,10 +215,12 @@ function MaterialModal({ courseId, chapterId, material, onClose, onSuccess }: Ma
 
   const [materialType, setMaterialType] = useState(material?.material_type || 'text')
   const [title, setTitle] = useState(material?.title || '')
-  const [description, setDescription] = useState(material?.description || '')
   const [content, setContent] = useState(material?.content || '')
   const [fileUrl, setFileUrl] = useState(material?.file_url || '')
   const [fileSize, setFileSize] = useState<number | null>(material?.file_size || null)
+
+  // Estado para archivo seleccionado (no subido aun)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -227,12 +228,34 @@ function MaterialModal({ courseId, chapterId, material, onClose, onSuccess }: Ma
     setError(null)
 
     try {
+      let uploadedUrl = fileUrl
+      let uploadedSize = fileSize
+
+      // Si hay un archivo seleccionado, subirlo ahora
+      if (selectedFile) {
+        const formData = new FormData()
+        formData.append('file', selectedFile)
+        formData.append('folder', 'course-materials')
+
+        const uploadRes = await fetch('/api/admin/upload', {
+          method: 'POST',
+          body: formData
+        })
+
+        const uploadData = await uploadRes.json()
+        if (!uploadData.success) {
+          throw new Error(uploadData.error || 'Error al subir archivo')
+        }
+
+        uploadedUrl = uploadData.url
+        uploadedSize = uploadData.size
+      }
+
       const body: any = {
         title,
-        description: description || null,
         content: materialType === 'text' ? content : null,
-        file_url: ['pdf', 'download'].includes(materialType) ? fileUrl : (materialType === 'link' ? content : null),
-        file_size: fileSize
+        file_url: ['pdf', 'download'].includes(materialType) ? uploadedUrl : (materialType === 'link' ? content : null),
+        file_size: uploadedSize
       }
 
       if (isEditing) {
@@ -263,9 +286,17 @@ function MaterialModal({ courseId, chapterId, material, onClose, onSuccess }: Ma
     }
   }
 
+  // Modo diferido: solo guarda el archivo localmente
+  const handleFileSelected = (file: File) => {
+    setSelectedFile(file)
+    setFileSize(file.size)
+  }
+
+  // Para archivos ya subidos (en modo edicion)
   const handleFileUploaded = (url: string, size: number) => {
     setFileUrl(url)
     setFileSize(size)
+    setSelectedFile(null)
   }
 
   return (
@@ -332,18 +363,6 @@ function MaterialModal({ courseId, chapterId, material, onClose, onSuccess }: Ma
             />
           </div>
 
-          {/* Description */}
-          <div>
-            <label className="text-sm text-slate-400 mb-2 block">Descripcion (opcional)</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Breve descripcion"
-              className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-indigo-500"
-            />
-          </div>
-
           {/* Content based on type */}
           {materialType === 'text' && (
             <div>
@@ -374,7 +393,8 @@ function MaterialModal({ courseId, chapterId, material, onClose, onSuccess }: Ma
           {(materialType === 'pdf' || materialType === 'download') && (
             <div>
               <label className="text-sm text-slate-400 mb-2 block">Archivo</label>
-              {fileUrl ? (
+              {/* Mostrar archivo ya subido (URL) */}
+              {fileUrl && !selectedFile ? (
                 <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-700/50 border border-slate-600">
                   <File className="h-5 w-5 text-indigo-400" />
                   <div className="flex-1 min-w-0">
@@ -391,11 +411,32 @@ function MaterialModal({ courseId, chapterId, material, onClose, onSuccess }: Ma
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
+              ) : selectedFile ? (
+                /* Mostrar archivo seleccionado (aun no subido) */
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                  <File className="h-5 w-5 text-amber-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{selectedFile.name}</p>
+                    <p className="text-xs text-amber-400">{formatFileSize(selectedFile.size)} - Pendiente de subir</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => { setSelectedFile(null); setFileSize(null) }}
+                    className="text-red-400"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               ) : (
+                /* FileUploader en modo diferido */
                 <FileUploader
-                  onUpload={handleFileUploaded}
+                  deferred
+                  onFileSelect={handleFileSelected}
                   accept={materialType === 'pdf' ? '.pdf' : '*'}
                   maxSize={50 * 1024 * 1024} // 50MB
+                  folder="course-materials"
                 />
               )}
             </div>
@@ -403,7 +444,7 @@ function MaterialModal({ courseId, chapterId, material, onClose, onSuccess }: Ma
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-700">
-            <Button type="button" variant="outline" onClick={onClose} className="border-slate-700 text-slate-300">
+            <Button type="button" variant="outline" onClick={onClose} className="border-slate-700 text-slate-300 bg-transparent">
               Cancelar
             </Button>
             <Button type="submit" disabled={loading || !title.trim()} className="bg-indigo-600 hover:bg-indigo-700">

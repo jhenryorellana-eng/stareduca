@@ -55,8 +55,23 @@ export default function LoginPage() {
         throw new Error('Error al iniciar sesion')
       }
 
-      // Redirigir al dashboard
-      router.push('/dashboard')
+      // Verificar si es admin para redirigir apropiadamente
+      const studentId = authData.user.user_metadata?.student_id
+      let redirectTo = '/dashboard'
+
+      if (studentId) {
+        const { data: student } = await supabase
+          .from('students')
+          .select('role')
+          .eq('id', studentId)
+          .single()
+
+        if (student?.role === 'admin') {
+          redirectTo = '/admin'
+        }
+      }
+
+      router.push(redirectTo)
       router.refresh()
 
     } catch (err: unknown) {

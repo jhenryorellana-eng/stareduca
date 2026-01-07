@@ -1,20 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -27,16 +31,9 @@ async function verifyAdmin(authToken: string) {
 // GET /api/admin/courses - Lista de cursos
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -45,7 +42,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || ''
     const offset = (page - 1) * limit
 
-    let query = supabase
+    let query = serviceClient
       .from('courses')
       .select(`
         id,
@@ -86,7 +83,7 @@ export async function GET(request: NextRequest) {
     let chapterCounts: Record<string, number> = {}
 
     if (courseIds.length > 0) {
-      const { data: chapters } = await supabase
+      const { data: chapters } = await serviceClient
         .from('chapters')
         .select('course_id')
         .in('course_id', courseIds)
@@ -127,16 +124,9 @@ export async function GET(request: NextRequest) {
 // POST /api/admin/courses - Crear curso
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -145,7 +135,9 @@ export async function POST(request: NextRequest) {
       description,
       short_description,
       thumbnail_url,
+      presentation_video_url,
       instructor_name,
+      instructor_bio,
       category,
       tags,
       is_published,
@@ -169,7 +161,7 @@ export async function POST(request: NextRequest) {
       .replace(/(^-|-$)/g, '')
 
     // Verificar si el slug existe
-    const { data: existingCourse } = await supabase
+    const { data: existingCourse } = await serviceClient
       .from('courses')
       .select('id')
       .eq('slug', slug)
@@ -180,7 +172,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Obtener el maximo order_index
-    const { data: maxOrder } = await supabase
+    const { data: maxOrder } = await serviceClient
       .from('courses')
       .select('order_index')
       .order('order_index', { ascending: false })
@@ -189,7 +181,7 @@ export async function POST(request: NextRequest) {
 
     const orderIndex = (maxOrder?.order_index || 0) + 1
 
-    const { data: course, error } = await supabase
+    const { data: course, error } = await serviceClient
       .from('courses')
       .insert({
         slug,
@@ -197,7 +189,9 @@ export async function POST(request: NextRequest) {
         description: description?.trim() || null,
         short_description: short_description?.trim() || null,
         thumbnail_url: thumbnail_url || null,
+        presentation_video_url: presentation_video_url || null,
         instructor_name: instructor_name?.trim() || null,
+        instructor_bio: instructor_bio?.trim() || null,
         instructor_id: admin.id,
         category: category || null,
         tags: tags || [],

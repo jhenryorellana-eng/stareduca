@@ -2,8 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
+  // Agregar pathname al header para que el layout pueda leerlo
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-pathname', request.nextUrl.pathname)
+
   let supabaseResponse = NextResponse.next({
-    request,
+    request: {
+      headers: requestHeaders,
+    },
   })
 
   const supabase = createServerClient(
@@ -19,7 +25,9 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value)
           )
           supabaseResponse = NextResponse.next({
-            request,
+            request: {
+              headers: requestHeaders,
+            },
           })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -38,7 +46,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // Protected routes - require authentication
-  const protectedPaths = ['/dashboard', '/referrals', '/earnings', '/links', '/payouts', '/settings']
+  const protectedPaths = ['/dashboard', '/referrals', '/earnings', '/links', '/payouts', '/settings', '/admin']
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path) || request.nextUrl.pathname === path.replace('/', '')
   )
@@ -55,6 +63,7 @@ export async function updateSession(request: NextRequest) {
 
   if (isAuthPath && user) {
     const url = request.nextUrl.clone()
+    // Por defecto ir a dashboard, el login ya maneja la redireccion segun rol
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }

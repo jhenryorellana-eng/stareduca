@@ -1,21 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Middleware para verificar admin
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -29,16 +32,9 @@ async function verifyAdmin(authToken: string) {
 // GET /api/admin/stats - Estadisticas del dashboard
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     // Obtener estadisticas en paralelo
@@ -57,22 +53,22 @@ export async function GET(request: NextRequest) {
       recentSignupsResult
     ] = await Promise.all([
       // Total estudiantes
-      supabase.from('students').select('id', { count: 'exact', head: true }),
+      serviceClient.from('students').select('id', { count: 'exact', head: true }),
       // Estudiantes activos
-      supabase.from('students').select('id', { count: 'exact', head: true }).eq('subscription_status', 'active'),
+      serviceClient.from('students').select('id', { count: 'exact', head: true }).eq('subscription_status', 'active'),
       // Nuevos estudiantes (ultimos 7 dias)
-      supabase.from('students').select('id', { count: 'exact', head: true }).gte('created_at', sevenDaysAgo.toISOString()),
+      serviceClient.from('students').select('id', { count: 'exact', head: true }).gte('created_at', sevenDaysAgo.toISOString()),
       // Total cursos
-      supabase.from('courses').select('id', { count: 'exact', head: true }),
+      serviceClient.from('courses').select('id', { count: 'exact', head: true }),
       // Cursos publicados
-      supabase.from('courses').select('id', { count: 'exact', head: true }).eq('is_published', true),
+      serviceClient.from('courses').select('id', { count: 'exact', head: true }).eq('is_published', true),
       // Ingresos del mes
-      supabase.from('payments')
+      serviceClient.from('payments')
         .select('amount_cents')
         .eq('status', 'succeeded')
         .gte('created_at', startOfMonth.toISOString()),
       // Pagos recientes
-      supabase.from('payments')
+      serviceClient.from('payments')
         .select(`
           id,
           amount_cents,
@@ -87,7 +83,7 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
         .limit(5),
       // Registros recientes
-      supabase.from('students')
+      serviceClient.from('students')
         .select('id, full_name, student_code, created_at, subscription_status')
         .order('created_at', { ascending: false })
         .limit(5)
@@ -99,7 +95,7 @@ export async function GET(request: NextRequest) {
     ) || 0
 
     // Estadisticas de suscripciones por tipo
-    const { data: subscriptionStats } = await supabase
+    const { data: subscriptionStats } = await serviceClient
       .from('students')
       .select('subscription_type')
       .eq('subscription_status', 'active')

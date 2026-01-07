@@ -1,8 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Service client para bypasear RLS
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
@@ -14,18 +15,13 @@ export async function GET(
 ) {
   try {
     const { postId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
 
-    let currentStudentId: string | null = null
-    if (authToken) {
-      const { data: { user } } = await supabase.auth.getUser(authToken)
-      if (user) {
-        currentStudentId = user.user_metadata?.student_id
-      }
-    }
+    // Obtener usuario autenticado
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    const currentStudentId = user?.user_metadata?.student_id || null
 
-    const { data: post, error } = await supabase
+    const { data: post, error } = await serviceClient
       .from('posts')
       .select(`
         id,
@@ -58,7 +54,7 @@ export async function GET(
     // Obtener reaccion del usuario
     let userReaction = null
     if (currentStudentId) {
-      const { data: reaction } = await supabase
+      const { data: reaction } = await serviceClient
         .from('reactions')
         .select('type')
         .eq('student_id', currentStudentId)
@@ -72,7 +68,7 @@ export async function GET(
     }
 
     // Obtener comentarios del post
-    const { data: comments } = await supabase
+    const { data: comments } = await serviceClient
       .from('comments')
       .select(`
         id,
@@ -84,7 +80,8 @@ export async function GET(
           id,
           full_name,
           avatar_url,
-          student_code
+          student_code,
+          role
         )
       `)
       .eq('post_id', postId)
@@ -94,7 +91,7 @@ export async function GET(
     let commentReactions: Record<string, string> = {}
     if (currentStudentId && comments && comments.length > 0) {
       const commentIds = comments.map(c => c.id)
-      const { data: reactions } = await supabase
+      const { data: reactions } = await serviceClient
         .from('reactions')
         .select('target_id, type')
         .eq('student_id', currentStudentId)
@@ -114,120 +111,27 @@ export async function GET(
       userReaction: commentReactions[comment.id] || null
     })) || []
 
+    // Organizar comentarios en arbol (padres e hijos)
+    const rootComments = commentsWithReactions.filter(c => !c.parent_comment_id)
+    const replies = commentsWithReactions.filter(c => c.parent_comment_id)
+
+    // Anidar respuestas en comentarios raiz
+    const nestedComments = rootComments.map(comment => ({
+      ...comment,
+      replies: replies.filter(r => r.parent_comment_id === comment.id)
+    }))
+
     return NextResponse.json({
       success: true,
       post: {
         ...post,
         userReaction,
-        comments: commentsWithReactions
+        comments: nestedComments
       }
     })
 
   } catch (error) {
     console.error('Error in GET /api/community/posts/[postId]:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error del servidor' },
-      { status: 500 }
-    )
-  }
-}
-
-// PATCH /api/community/posts/[postId] - Actualizar post
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ postId: string }> }
-) {
-  try {
-    const { postId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
-
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
-      )
-    }
-
-    const studentId = user.user_metadata?.student_id
-
-    // Verificar que el usuario es el autor
-    const { data: existingPost } = await supabase
-      .from('posts')
-      .select('author_id')
-      .eq('id', postId)
-      .single()
-
-    if (!existingPost) {
-      return NextResponse.json(
-        { success: false, error: 'Publicacion no encontrada' },
-        { status: 404 }
-      )
-    }
-
-    if (existingPost.author_id !== studentId) {
-      return NextResponse.json(
-        { success: false, error: 'No tienes permiso para editar esta publicacion' },
-        { status: 403 }
-      )
-    }
-
-    const body = await request.json()
-    const { content } = body
-
-    if (!content || content.trim().length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'El contenido es requerido' },
-        { status: 400 }
-      )
-    }
-
-    const { data: post, error } = await supabase
-      .from('posts')
-      .update({
-        content: content.trim(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', postId)
-      .select(`
-        id,
-        content,
-        image_url,
-        is_pinned,
-        is_announcement,
-        reactions_count,
-        comments_count,
-        created_at,
-        updated_at,
-        author:students!author_id (
-          id,
-          full_name,
-          avatar_url,
-          student_code,
-          role
-        )
-      `)
-      .single()
-
-    if (error) {
-      return NextResponse.json(
-        { success: false, error: 'Error al actualizar publicacion' },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ success: true, post })
-
-  } catch (error) {
-    console.error('Error in PATCH /api/community/posts/[postId]:', error)
     return NextResponse.json(
       { success: false, error: 'Error del servidor' },
       { status: 500 }
@@ -242,36 +146,36 @@ export async function DELETE(
 ) {
   try {
     const { postId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
 
-    if (!authToken) {
+    // Verificar autenticación
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
+    const studentId = user.user_metadata?.student_id
+    if (!studentId) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
+        { success: false, error: 'Estudiante no encontrado' },
+        { status: 400 }
       )
     }
 
-    const studentId = user.user_metadata?.student_id
-
     // Verificar que el usuario es el autor o admin
-    const { data: student } = await supabase
+    const { data: student } = await serviceClient
       .from('students')
       .select('role')
       .eq('id', studentId)
       .single()
 
-    const { data: existingPost } = await supabase
+    const { data: existingPost } = await serviceClient
       .from('posts')
-      .select('author_id')
+      .select('author_id, image_url')
       .eq('id', postId)
       .single()
 
@@ -292,7 +196,23 @@ export async function DELETE(
       )
     }
 
-    const { error } = await supabase
+    // Eliminar imagen del storage si existe
+    if (existingPost.image_url) {
+      try {
+        // Extraer el path de la imagen desde la URL
+        const url = new URL(existingPost.image_url)
+        const pathMatch = url.pathname.match(/\/storage\/v1\/object\/public\/post-images\/(.+)/)
+        if (pathMatch) {
+          const imagePath = pathMatch[1]
+          await serviceClient.storage.from('post-images').remove([imagePath])
+        }
+      } catch (storageError) {
+        console.error('Error deleting image from storage:', storageError)
+        // Continuar con la eliminación del post aunque falle la imagen
+      }
+    }
+
+    const { error } = await serviceClient
       .from('posts')
       .delete()
       .eq('id', postId)

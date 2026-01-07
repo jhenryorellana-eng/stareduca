@@ -1,11 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 const DEFAULT_PREFERENCES = {
   email_comments: true,
@@ -19,30 +13,31 @@ const DEFAULT_PREFERENCES = {
 }
 
 // GET /api/settings/notifications - Obtener preferencias
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
+    // Verificar autenticacion
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!authToken) {
+    if (!user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
+    const studentId = user.user_metadata?.student_id
+    if (!studentId) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
+        { success: false, error: 'Estudiante no encontrado' },
+        { status: 400 }
       )
     }
 
-    const studentId = user.user_metadata?.student_id
+    const adminClient = createAdminClient()
 
     // Buscar preferencias existentes
-    const { data: preferences, error } = await supabase
+    const { data: preferences, error } = await adminClient
       .from('notification_preferences')
       .select('*')
       .eq('student_id', studentId)
@@ -58,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     // Si no existen, crear con valores por defecto
     if (!preferences) {
-      const { data: newPrefs, error: createError } = await supabase
+      const { data: newPrefs, error: createError } = await adminClient
         .from('notification_preferences')
         .insert({
           student_id: studentId,
@@ -98,25 +93,26 @@ export async function GET(request: NextRequest) {
 // PATCH /api/settings/notifications - Actualizar preferencias
 export async function PATCH(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
+    // Verificar autenticacion
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    if (!authToken) {
+    if (!user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
-    if (!user) {
+    const studentId = user.user_metadata?.student_id
+    if (!studentId) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
-        { status: 401 }
+        { success: false, error: 'Estudiante no encontrado' },
+        { status: 400 }
       )
     }
 
-    const studentId = user.user_metadata?.student_id
+    const adminClient = createAdminClient()
     const body = await request.json()
 
     // Solo permitir campos validos
@@ -137,7 +133,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Upsert preferencias
-    const { error } = await supabase
+    const { error } = await adminClient
       .from('notification_preferences')
       .upsert({
         student_id: studentId,

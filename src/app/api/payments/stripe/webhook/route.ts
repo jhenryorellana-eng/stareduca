@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { constructWebhookEvent, mapStripeSubscriptionStatus } from '@/lib/stripe'
+import { constructWebhookEvent, mapStripeSubscriptionStatus, STRIPE_PRICE_IDS } from '@/lib/stripe'
 import Stripe from 'stripe'
 
 export async function POST(request: NextRequest) {
@@ -189,12 +189,30 @@ export async function POST(request: NextRequest) {
 
         console.log('Subscription updated:', subscription.id, status)
 
+        // Detectar tipo de plan basándose en el price_id
+        const priceId = subscription.items.data[0]?.price?.id
+        let subscriptionType: 'monthly' | 'yearly' | undefined
+
+        if (priceId === STRIPE_PRICE_IDS.monthly) {
+          subscriptionType = 'monthly'
+        } else if (priceId === STRIPE_PRICE_IDS.yearly) {
+          subscriptionType = 'yearly'
+        }
+
+        // Actualizar estudiante (incluyendo subscription_type si cambió)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const studentUpdateData: any = {
+          subscription_status: status,
+          subscription_end_date: new Date(subAny.current_period_end * 1000).toISOString(),
+        }
+
+        if (subscriptionType) {
+          studentUpdateData.subscription_type = subscriptionType
+        }
+
         await supabase
           .from('students')
-          .update({
-            subscription_status: status,
-            subscription_end_date: new Date(subAny.current_period_end * 1000).toISOString(),
-          })
+          .update(studentUpdateData)
           .eq('stripe_customer_id', customerId)
 
         await supabase
@@ -203,6 +221,7 @@ export async function POST(request: NextRequest) {
             status,
             current_period_end: new Date(subAny.current_period_end * 1000).toISOString(),
             cancel_at_period_end: subAny.cancel_at_period_end,
+            billing_cycle: subscriptionType || undefined,
           })
           .eq('external_subscription_id', subscription.id)
         break

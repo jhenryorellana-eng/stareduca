@@ -1,28 +1,17 @@
-import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/lib/supabase/server'
 import { AdminSidebar } from '@/components/admin/AdminSidebar'
 import { AdminHeader } from '@/components/admin/AdminHeader'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const cookieStore = await cookies()
-  const authToken = cookieStore.get('sb-access-token')?.value
+  const supabase = await createClient()
 
-  if (!authToken) {
-    redirect('/login')
-  }
-
-  // Verificar sesion
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+  // Verificar autenticacion
+  const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
     redirect('/login')

@@ -11,31 +11,20 @@ interface CourseCardProps {
     id: string
     slug: string
     title: string
-    description: string
+    short_description?: string | null
     thumbnail_url?: string | null
     instructor_name: string
     instructor_avatar_url?: string | null
     total_chapters: number
     total_duration_seconds: number
-    difficulty_level: string
+    category?: string | null
+    tags?: string[] | null
     progress: {
       completedChapters: number
       totalChapters: number
       percent: number
     }
   }
-}
-
-const difficultyColors = {
-  beginner: 'bg-green-500/20 text-green-400 border-green-500/30',
-  intermediate: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  advanced: 'bg-red-500/20 text-red-400 border-red-500/30',
-}
-
-const difficultyLabels = {
-  beginner: 'Principiante',
-  intermediate: 'Intermedio',
-  advanced: 'Avanzado',
 }
 
 export function CourseCard({ course }: CourseCardProps) {
@@ -81,15 +70,17 @@ export function CourseCard({ course }: CourseCardProps) {
           </div>
         )}
 
-        {/* Difficulty badge */}
-        <div className="absolute top-3 left-3">
-          <Badge
-            variant="outline"
-            className={difficultyColors[course.difficulty_level as keyof typeof difficultyColors] || difficultyColors.beginner}
-          >
-            {difficultyLabels[course.difficulty_level as keyof typeof difficultyLabels] || 'Principiante'}
-          </Badge>
-        </div>
+        {/* Category badge */}
+        {course.category && (
+          <div className="absolute top-3 left-3">
+            <Badge
+              variant="outline"
+              className="bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+            >
+              {course.category}
+            </Badge>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -100,9 +91,30 @@ export function CourseCard({ course }: CourseCardProps) {
         </h3>
 
         {/* Description */}
-        <p className="mt-2 text-sm text-slate-400 line-clamp-2">
-          {course.description}
-        </p>
+        {course.short_description && (
+          <p className="mt-2 text-sm text-slate-400 line-clamp-2">
+            {course.short_description}
+          </p>
+        )}
+
+        {/* Tags */}
+        {course.tags && course.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {course.tags.slice(0, 3).map((tag, i) => (
+              <span
+                key={i}
+                className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-300"
+              >
+                {tag}
+              </span>
+            ))}
+            {course.tags.length > 3 && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700/50 text-slate-500">
+                +{course.tags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Instructor */}
         <div className="mt-3 flex items-center gap-2">

@@ -1,20 +1,32 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Helper para extraer path del storage desde URL
+function extractStoragePath(url: string | null): string | null {
+  if (!url) return null
+  // URL format: https://{project}.supabase.co/storage/v1/object/public/{bucket}/{path}
+  const match = url.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/)
+  return match ? match[1] : null
+}
+
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -31,19 +43,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
-    const { data: course, error } = await supabase
+    const { data: course, error } = await serviceClient
       .from('courses')
       .select(`
         *,
@@ -95,22 +100,15 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
-    // Verificar que el curso existe
-    const { data: existingCourse } = await supabase
+    // Verificar que el curso existe y obtener datos actuales
+    const { data: existingCourse } = await serviceClient
       .from('courses')
-      .select('id')
+      .select('id, thumbnail_url, presentation_video_url')
       .eq('id', id)
       .single()
 
@@ -124,8 +122,8 @@ export async function PATCH(
     const body = await request.json()
     const allowedFields = [
       'title', 'description', 'short_description', 'thumbnail_url',
-      'instructor_name', 'instructor_bio', 'category', 'tags',
-      'is_published', 'is_featured', 'is_free', 'order_index'
+      'presentation_video_url', 'instructor_name', 'instructor_bio',
+      'category', 'tags', 'is_published', 'order_index'
     ]
 
     const updates: Record<string, any> = {}
@@ -142,9 +140,37 @@ export async function PATCH(
       )
     }
 
+    // Si hay nuevo thumbnail y es diferente al anterior, eliminar el anterior
+    if (updates.thumbnail_url !== undefined &&
+        existingCourse.thumbnail_url &&
+        existingCourse.thumbnail_url !== updates.thumbnail_url) {
+      const oldPath = extractStoragePath(existingCourse.thumbnail_url)
+      if (oldPath) {
+        try {
+          await serviceClient.storage.from('course-thumbnails').remove([oldPath])
+        } catch (e) {
+          console.error('Error deleting old thumbnail:', e)
+        }
+      }
+    }
+
+    // Si hay nuevo video de presentación y es diferente al anterior, eliminar el anterior
+    if (updates.presentation_video_url !== undefined &&
+        existingCourse.presentation_video_url &&
+        existingCourse.presentation_video_url !== updates.presentation_video_url) {
+      const oldPath = extractStoragePath(existingCourse.presentation_video_url)
+      if (oldPath) {
+        try {
+          await serviceClient.storage.from('chapter-videos').remove([oldPath])
+        } catch (e) {
+          console.error('Error deleting old presentation video:', e)
+        }
+      }
+    }
+
     updates.updated_at = new Date().toISOString()
 
-    const { data: course, error } = await supabase
+    const { data: course, error } = await serviceClient
       .from('courses')
       .update(updates)
       .eq('id', id)
@@ -180,34 +206,63 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
-    // Verificar que el curso existe
-    const { data: existingCourse } = await supabase
+    // Obtener curso con thumbnail, video de presentación y videos de capitulos
+    const { data: course } = await serviceClient
       .from('courses')
-      .select('id, title')
+      .select(`
+        id, title, thumbnail_url, presentation_video_url,
+        chapters (video_url)
+      `)
       .eq('id', id)
       .single()
 
-    if (!existingCourse) {
+    if (!course) {
       return NextResponse.json(
         { success: false, error: 'Curso no encontrado' },
         { status: 404 }
       )
     }
 
+    // Recolectar archivos a eliminar del Storage
+    const filesToDelete: { bucket: string; path: string }[] = []
+
+    // Thumbnail del curso
+    if (course.thumbnail_url) {
+      const path = extractStoragePath(course.thumbnail_url)
+      if (path) filesToDelete.push({ bucket: 'course-thumbnails', path })
+    }
+
+    // Video de presentación del curso
+    if (course.presentation_video_url) {
+      const path = extractStoragePath(course.presentation_video_url)
+      if (path) filesToDelete.push({ bucket: 'chapter-videos', path })
+    }
+
+    // Videos de capitulos
+    for (const chapter of course.chapters || []) {
+      if (chapter.video_url) {
+        const path = extractStoragePath(chapter.video_url)
+        if (path) filesToDelete.push({ bucket: 'chapter-videos', path })
+      }
+    }
+
+    // Eliminar archivos del Storage
+    for (const file of filesToDelete) {
+      try {
+        await serviceClient.storage.from(file.bucket).remove([file.path])
+      } catch (storageError) {
+        console.error(`Error deleting storage file ${file.path}:`, storageError)
+        // Continuar aunque falle la eliminacion del archivo
+      }
+    }
+
     // Eliminar curso (los capitulos y materiales se eliminan en cascada)
-    const { error } = await supabase
+    const { error } = await serviceClient
       .from('courses')
       .delete()
       .eq('id', id)

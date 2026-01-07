@@ -17,7 +17,7 @@ interface CreatePostFormProps {
     full_name: string
     avatar_url: string | null
   }
-  onSubmit: (data: { content: string; image_url?: string }) => Promise<void>
+  onSubmit: (data: { content: string; imageFile?: File }) => Promise<void>
   placeholder?: string
 }
 
@@ -27,14 +27,15 @@ export function CreatePostForm({
   placeholder = "¿Que quieres compartir?"
 }: CreatePostFormProps) {
   const [content, setContent] = useState('')
-  const [imageUrl, setImageUrl] = useState('')
-  const [showImageInput, setShowImageInput] = useState(false)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const [mentionSuggestions, setMentionSuggestions] = useState<Student[]>([])
   const [showMentions, setShowMentions] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-resize textarea
   useEffect(() => {
@@ -43,6 +44,15 @@ export function CreatePostForm({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 300)}px`
     }
   }, [content])
+
+  // Cleanup image preview URL when component unmounts or image changes
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview)
+      }
+    }
+  }, [imagePreview])
 
   // Buscar usuarios para menciones
   useEffect(() => {
@@ -116,6 +126,43 @@ export function CreatePostForm({
     setMentionQuery(null)
   }
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validar tipo de archivo
+    if (!file.type.startsWith('image/')) {
+      setError('Solo se permiten archivos de imagen')
+      return
+    }
+
+    // Validar tamaño (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('La imagen no puede superar 5MB')
+      return
+    }
+
+    // Limpiar preview anterior
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview)
+    }
+
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+    setError(null)
+  }
+
+  const removeImage = () => {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview)
+    }
+    setImageFile(null)
+    setImagePreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -135,13 +182,12 @@ export function CreatePostForm({
     try {
       await onSubmit({
         content: content.trim(),
-        image_url: imageUrl.trim() || undefined
+        imageFile: imageFile || undefined
       })
 
       // Limpiar formulario
       setContent('')
-      setImageUrl('')
-      setShowImageInput(false)
+      removeImage()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al publicar')
     } finally {
@@ -196,42 +242,27 @@ export function CreatePostForm({
             </div>
           )}
 
-          {/* Image URL input */}
-          {showImageInput && (
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                type="url"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="URL de la imagen..."
-                className="flex-1 px-3 py-2 text-sm bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 outline-none focus:border-indigo-500"
-                disabled={isSubmitting}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setShowImageInput(false)
-                  setImageUrl('')
-                }}
-                className="p-2 text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageSelect}
+            className="hidden"
+            disabled={isSubmitting}
+          />
 
           {/* Image preview */}
-          {imageUrl && (
+          {imagePreview && (
             <div className="mt-3 relative">
               <img
-                src={imageUrl}
+                src={imagePreview}
                 alt="Preview"
                 className="rounded-lg max-h-48 object-cover"
-                onError={() => setImageUrl('')}
               />
               <button
                 type="button"
-                onClick={() => setImageUrl('')}
+                onClick={removeImage}
                 className="absolute top-2 right-2 p-1 rounded-full bg-black/50 text-white hover:bg-black/70"
               >
                 <X className="h-4 w-4" />
@@ -263,7 +294,7 @@ export function CreatePostForm({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setShowImageInput(!showImageInput)}
+            onClick={() => fileInputRef.current?.click()}
             className="text-slate-400 hover:text-white"
             disabled={isSubmitting}
           >

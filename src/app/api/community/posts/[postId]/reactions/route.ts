@@ -1,8 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Service client para bypasear RLS
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
@@ -16,20 +17,14 @@ export async function POST(
 ) {
   try {
     const { postId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
 
-    if (!authToken) {
-      return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
+    // Verificar autenticación
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: { user } } = await supabase.auth.getUser(authToken)
     if (!user) {
       return NextResponse.json(
-        { success: false, error: 'Sesion invalida' },
+        { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
@@ -53,7 +48,7 @@ export async function POST(
     }
 
     // Verificar que el post existe
-    const { data: post } = await supabase
+    const { data: post } = await serviceClient
       .from('posts')
       .select('id, author_id, reactions_count')
       .eq('id', postId)
@@ -67,7 +62,7 @@ export async function POST(
     }
 
     // Verificar si ya existe una reaccion
-    const { data: existingReaction } = await supabase
+    const { data: existingReaction } = await serviceClient
       .from('reactions')
       .select('id, type')
       .eq('student_id', studentId)
@@ -78,13 +73,13 @@ export async function POST(
     if (existingReaction) {
       if (existingReaction.type === type) {
         // Misma reaccion: eliminar (toggle off)
-        await supabase
+        await serviceClient
           .from('reactions')
           .delete()
           .eq('id', existingReaction.id)
 
         // Decrementar contador
-        await supabase
+        await serviceClient
           .from('posts')
           .update({ reactions_count: Math.max(0, post.reactions_count - 1) })
           .eq('id', postId)
@@ -96,7 +91,7 @@ export async function POST(
         })
       } else {
         // Diferente reaccion: actualizar
-        await supabase
+        await serviceClient
           .from('reactions')
           .update({ type })
           .eq('id', existingReaction.id)
@@ -110,7 +105,7 @@ export async function POST(
     }
 
     // Nueva reaccion
-    await supabase.from('reactions').insert({
+    await serviceClient.from('reactions').insert({
       student_id: studentId,
       target_type: 'post',
       target_id: postId,
@@ -119,20 +114,20 @@ export async function POST(
 
     // Incrementar contador
     const newCount = post.reactions_count + 1
-    await supabase
+    await serviceClient
       .from('posts')
       .update({ reactions_count: newCount })
       .eq('id', postId)
 
     // Crear notificacion para el autor (si no es el mismo usuario)
     if (post.author_id !== studentId) {
-      const { data: reactor } = await supabase
+      const { data: reactor } = await serviceClient
         .from('students')
         .select('full_name')
         .eq('id', studentId)
         .single()
 
-      await supabase.from('notifications').insert({
+      await serviceClient.from('notifications').insert({
         student_id: post.author_id,
         type: 'reaction',
         title: 'Nueva reaccion',
@@ -166,7 +161,7 @@ export async function GET(
   try {
     const { postId } = await params
 
-    const { data: reactions, error } = await supabase
+    const { data: reactions, error } = await serviceClient
       .from('reactions')
       .select(`
         id,

@@ -102,13 +102,23 @@ export default function DashboardPage() {
             Bienvenido de vuelta
           </h1>
           <p className="mt-2 text-indigo-100 max-w-xl">
-            Continua aprendiendo y alcanza tus metas. Tienes {stats.coursesInProgress} curso{stats.coursesInProgress !== 1 ? 's' : ''} en progreso.
+            {courses.length > 0
+              ? `Continua aprendiendo y alcanza tus metas. Tienes ${stats.coursesInProgress} curso${stats.coursesInProgress !== 1 ? 's' : ''} en progreso.`
+              : 'Estamos preparando nuevos cursos para ti. Pronto tendras acceso a contenido exclusivo.'}
           </p>
           {coursesInProgress.length > 0 && (
             <Link href={`/courses/${coursesInProgress[0].slug}`}>
               <Button className="mt-4 bg-white text-indigo-600 hover:bg-indigo-50">
                 <Play className="h-4 w-4 mr-2" />
                 Continuar aprendiendo
+              </Button>
+            </Link>
+          )}
+          {courses.length === 0 && (
+            <Link href="/community">
+              <Button className="mt-4 bg-white text-indigo-600 hover:bg-indigo-50">
+                <Users className="h-4 w-4 mr-2" />
+                Explorar comunidad
               </Button>
             </Link>
           )}
@@ -169,6 +179,35 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* No courses message */}
+      {courses.length === 0 && (
+        <section className="text-center py-12">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-indigo-500/10 mb-4">
+            <GraduationCap className="h-8 w-8 text-indigo-400" />
+          </div>
+          <h2 className="text-xl font-semibold text-white mb-2">
+            Proximamente nuevos cursos
+          </h2>
+          <p className="text-slate-400 max-w-md mx-auto mb-6">
+            Estamos trabajando en contenido exclusivo para ti. Mientras tanto, explora la comunidad y conecta con otros estudiantes.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/community">
+              <Button variant="outline" className="border-slate-600 text-slate-300 bg-slate-800 hover:border-indigo-500 hover:bg-slate-800 hover:text-indigo-400 ">
+                <Users className="h-4 w-4 mr-2" />
+                Ir a la comunidad
+              </Button>
+            </Link>
+            <Link href="/affiliate">
+              <Button className="bg-indigo-600 hover:bg-indigo-700">
+                <TrendingUp className="h-4 w-4 mr-2" />
+                Programa de afiliados
+              </Button>
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* Courses in progress */}
       {coursesInProgress.length > 0 && (

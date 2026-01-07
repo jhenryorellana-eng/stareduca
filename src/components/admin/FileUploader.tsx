@@ -4,17 +4,21 @@ import { useState, useRef, useCallback } from 'react'
 import { Upload, Loader2, AlertCircle } from 'lucide-react'
 
 interface FileUploaderProps {
-  onUpload: (url: string, size: number) => void
+  onUpload?: (url: string, size: number) => void
+  onFileSelect?: (file: File) => void  // Modo diferido: solo devuelve el File
   accept?: string
   maxSize?: number // in bytes
   folder?: string
+  deferred?: boolean // Si es true, no sube inmediatamente
 }
 
 export function FileUploader({
   onUpload,
+  onFileSelect,
   accept = '*',
   maxSize = 50 * 1024 * 1024, // 50MB default
-  folder = 'materials'
+  folder = 'materials',
+  deferred = false
 }: FileUploaderProps) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -53,6 +57,13 @@ export function FileUploader({
       }
     }
 
+    // Modo diferido: solo devolver el archivo, no subirlo
+    if (deferred && onFileSelect) {
+      onFileSelect(file)
+      return
+    }
+
+    // Modo normal: subir inmediatamente
     setUploading(true)
 
     try {
@@ -71,7 +82,9 @@ export function FileUploader({
         throw new Error(data.error || 'Error al subir archivo')
       }
 
-      onUpload(data.url, data.size)
+      if (onUpload) {
+        onUpload(data.url, data.size)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al subir archivo')
     } finally {

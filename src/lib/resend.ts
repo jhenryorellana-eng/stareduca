@@ -632,3 +632,132 @@ export async function sendSubscriptionCanceledEmail(params: {
     return { success: false, error }
   }
 }
+
+// ============================================================================
+// EMAIL DE RECUPERACION DE CONTRASENA
+// ============================================================================
+
+export async function sendPasswordResetEmail(params: {
+  to: string
+  fullName: string
+  resetUrl: string
+}) {
+  const { to, fullName, resetUrl } = params
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from: getFromEmail(),
+      to: [to],
+      subject: 'Recupera tu contrasena - StarEduca',
+      html: `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recuperar Contrasena - StarEduca</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0F172A;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="width: 100%; max-width: 600px; border-collapse: collapse;">
+
+          <!-- Header -->
+          <tr>
+            <td align="center" style="padding-bottom: 30px;">
+              <div style="display: inline-flex; align-items: center; gap: 10px;">
+                <div style="width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #6366F1, #8B5CF6); display: flex; align-items: center; justify-content: center;">
+                  <span style="color: white; font-weight: bold; font-size: 24px;">S</span>
+                </div>
+                <span style="color: white; font-size: 28px; font-weight: bold;">StarEduca</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #1E293B, #334155); border-radius: 16px; padding: 40px;">
+
+              <!-- Icon -->
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="display: inline-block; width: 64px; height: 64px; border-radius: 50%; background: rgba(99, 102, 241, 0.2); line-height: 64px;">
+                  <span style="font-size: 32px;">🔐</span>
+                </div>
+              </div>
+
+              <!-- Title -->
+              <h1 style="color: #F8FAFC; font-size: 28px; margin: 0 0 20px 0; text-align: center;">
+                Recupera tu Contrasena
+              </h1>
+
+              <p style="color: #94A3B8; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0; text-align: center;">
+                Hola <strong style="color: #F8FAFC;">${fullName}</strong>, recibimos una solicitud para restablecer la contrasena de tu cuenta.
+              </p>
+
+              <!-- Warning Box -->
+              <div style="background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+                <p style="color: #FBBF24; font-size: 14px; margin: 0; text-align: center;">
+                  ⚠️ Este enlace expirara en <strong>1 hora</strong>
+                </p>
+              </div>
+
+              <!-- CTA Button -->
+              <div style="text-align: center; margin-bottom: 24px;">
+                <a href="${resetUrl}" style="display: inline-block; background: linear-gradient(135deg, #6366F1, #8B5CF6); color: white; text-decoration: none; padding: 16px 40px; border-radius: 12px; font-weight: 600; font-size: 16px;">
+                  Restablecer Contrasena
+                </a>
+              </div>
+
+              <!-- Alternative Link -->
+              <p style="color: #64748B; font-size: 12px; text-align: center; margin: 0 0 16px 0;">
+                Si el boton no funciona, copia y pega este enlace en tu navegador:
+              </p>
+              <p style="color: #818CF8; font-size: 12px; text-align: center; word-break: break-all; margin: 0 0 24px 0;">
+                ${resetUrl}
+              </p>
+
+              <!-- Security Note -->
+              <div style="background: #0F172A; border-radius: 12px; padding: 16px;">
+                <p style="color: #64748B; font-size: 13px; margin: 0; text-align: center;">
+                  Si no solicitaste este cambio, puedes ignorar este correo. Tu contrasena seguira siendo la misma.
+                </p>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding-top: 30px; text-align: center;">
+              <p style="color: #64748B; font-size: 12px; margin: 0;">
+                © ${new Date().getFullYear()} StarEduca. Todos los derechos reservados.
+              </p>
+              <p style="color: #475569; font-size: 12px; margin: 10px 0 0 0;">
+                Este email fue enviado porque solicitaste recuperar tu contrasena.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+      `,
+    })
+
+    if (error) {
+      console.error('Error sending password reset email:', error)
+      return { success: false, error }
+    }
+
+    console.log('Password reset email sent:', data?.id)
+    return { success: true, id: data?.id }
+
+  } catch (error) {
+    console.error('Failed to send password reset email:', error)
+    return { success: false, error }
+  }
+}

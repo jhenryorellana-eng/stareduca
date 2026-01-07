@@ -1,20 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabase = createClient(
+// Cliente con service role para operaciones admin (bypassa RLS)
+const serviceClient = createServiceClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function verifyAdmin(authToken: string) {
-  const { data: { user } } = await supabase.auth.getUser(authToken)
+// Verificar que el usuario es admin
+async function verifyAdmin() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
   if (!user) return null
 
   const studentId = user.user_metadata?.student_id
   if (!studentId) return null
 
-  const { data: student } = await supabase
+  const { data: student } = await serviceClient
     .from('students')
     .select('id, role')
     .eq('id', studentId)
@@ -31,19 +35,12 @@ export async function GET(
 ) {
   try {
     const { chapterId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
-    const { data: materials, error } = await supabase
+    const { data: materials, error } = await serviceClient
       .from('chapter_materials')
       .select('*')
       .eq('chapter_id', chapterId)
@@ -78,20 +75,13 @@ export async function POST(
 ) {
   try {
     const { chapterId } = await params
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
+    const admin = await verifyAdmin()
+    if (!admin) {
       return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
-    const admin = await verifyAdmin(authToken)
-    if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
-    }
-
     // Verificar que el capitulo existe
-    const { data: chapter } = await supabase
+    const { data: chapter } = await serviceClient
       .from('chapters')
       .select('id')
       .eq('id', chapterId)
@@ -108,7 +98,6 @@ export async function POST(
     const {
       material_type,
       title,
-      description,
       content,
       file_url,
       file_size
@@ -130,7 +119,7 @@ export async function POST(
     }
 
     // Obtener el maximo order_index
-    const { data: maxOrder } = await supabase
+    const { data: maxOrder } = await serviceClient
       .from('chapter_materials')
       .select('order_index')
       .eq('chapter_id', chapterId)
@@ -140,16 +129,15 @@ export async function POST(
 
     const orderIndex = (maxOrder?.order_index || 0) + 1
 
-    const { data: material, error } = await supabase
+    const { data: material, error } = await serviceClient
       .from('chapter_materials')
       .insert({
         chapter_id: chapterId,
-        material_type,
+        type: material_type,
         title: title.trim(),
-        description: description?.trim() || null,
         content: content || null,
         file_url: file_url || null,
-        file_size: file_size || null,
+        file_size_bytes: file_size || null,
         order_index: orderIndex
       })
       .select()
@@ -183,16 +171,9 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; chapterId: string }> }
 ) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const body = await request.json()
@@ -205,11 +186,19 @@ export async function PATCH(
       )
     }
 
-    const allowedFields = ['title', 'description', 'content', 'file_url', 'file_size', 'order_index']
+    // Mapear campos del frontend a campos de BD
+    const fieldMapping: Record<string, string> = {
+      'title': 'title',
+      'content': 'content',
+      'file_url': 'file_url',
+      'file_size': 'file_size_bytes',
+      'order_index': 'order_index'
+    }
+
     const filteredUpdates: Record<string, any> = {}
-    for (const field of allowedFields) {
-      if (updates[field] !== undefined) {
-        filteredUpdates[field] = updates[field]
+    for (const [frontendField, dbField] of Object.entries(fieldMapping)) {
+      if (updates[frontendField] !== undefined) {
+        filteredUpdates[dbField] = updates[frontendField]
       }
     }
 
@@ -220,9 +209,7 @@ export async function PATCH(
       )
     }
 
-    filteredUpdates.updated_at = new Date().toISOString()
-
-    const { data: material, error } = await supabase
+    const { data: material, error } = await serviceClient
       .from('chapter_materials')
       .update(filteredUpdates)
       .eq('id', materialId)
@@ -257,16 +244,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; chapterId: string }> }
 ) {
   try {
-    const cookieStore = await cookies()
-    const authToken = cookieStore.get('sb-access-token')?.value
-
-    if (!authToken) {
-      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
-    }
-
-    const admin = await verifyAdmin(authToken)
+    const admin = await verifyAdmin()
     if (!admin) {
-      return NextResponse.json({ success: false, error: 'Acceso denegado' }, { status: 403 })
+      return NextResponse.json({ success: false, error: 'No autorizado' }, { status: 401 })
     }
 
     const { searchParams } = new URL(request.url)
@@ -280,7 +260,7 @@ export async function DELETE(
     }
 
     // Obtener material para verificar si tiene archivo
-    const { data: material } = await supabase
+    const { data: material } = await serviceClient
       .from('chapter_materials')
       .select('file_url')
       .eq('id', materialId)
@@ -290,11 +270,11 @@ export async function DELETE(
       // Extraer path del archivo y eliminarlo del storage
       const pathMatch = material.file_url.match(/course-materials\/(.+)/)
       if (pathMatch) {
-        await supabase.storage.from('course-materials').remove([pathMatch[1]])
+        await serviceClient.storage.from('course-materials').remove([pathMatch[1]])
       }
     }
 
-    const { error } = await supabase
+    const { error } = await serviceClient
       .from('chapter_materials')
       .delete()
       .eq('id', materialId)
