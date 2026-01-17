@@ -8,14 +8,21 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     * - api routes (let them handle their own auth)
-     * - referral landing pages ([app]/ref/[code])
+     * Solo ejecutar middleware en rutas que lo necesitan (auth check)
+     * Esto evita timeouts en Vercel Edge por llamadas innecesarias
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api|[^/]+/ref/).*)',
+    '/dashboard/:path*',
+    '/courses/:path*',
+    '/community/:path*',
+    '/settings/:path*',
+    '/admin/:path*',
+    '/affiliate/:path*',
+    '/referrals/:path*',
+    '/earnings/:path*',
+    '/links/:path*',
+    '/payouts/:path*',
+    '/login',
+    '/register',
+    '/register/:path*',
   ],
 }

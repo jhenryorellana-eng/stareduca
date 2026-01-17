@@ -37,16 +37,13 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Do not run code between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Usar getSession() en lugar de getUser() - NO hace llamada de red
+  // Solo lee y refresca el token del cookie
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
 
   // Protected routes - require authentication
-  const protectedPaths = ['/dashboard', '/referrals', '/earnings', '/links', '/payouts', '/settings', '/admin']
+  const protectedPaths = ['/dashboard', '/courses', '/community', '/settings', '/admin', '/affiliate', '/referrals', '/earnings', '/links', '/payouts']
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path) || request.nextUrl.pathname === path.replace('/', '')
   )
