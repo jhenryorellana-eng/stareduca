@@ -1,16 +1,12 @@
 import { type NextRequest } from 'next/server'
-import { updateSession } from '@/lib/supabase/middleware'
+import { updateSession } from '@/lib/supabase/proxy'
 
-export async function middleware(request: NextRequest) {
-  return await updateSession(request)
+export function proxy(request: NextRequest) {
+  return updateSession(request)
 }
 
 export const config = {
   matcher: [
-    /*
-     * Solo ejecutar middleware en rutas que lo necesitan (auth check)
-     * Esto evita timeouts en Vercel Edge por llamadas innecesarias
-     */
     '/dashboard/:path*',
     '/courses/:path*',
     '/community/:path*',

@@ -71,8 +71,16 @@ export default function LoginPage() {
         }
       }
 
-      router.push(redirectTo)
-      router.refresh()
+      // Esperar a que la sesión esté establecida antes de navegar
+      // Esto evita la race condition donde el middleware no encuentra el cookie
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.push(redirectTo)
+      } else {
+        // Fallback: pequeño delay para asegurar que el cookie esté disponible
+        await new Promise(resolve => setTimeout(resolve, 150))
+        router.push(redirectTo)
+      }
 
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error desconocido')
